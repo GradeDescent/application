@@ -1,6 +1,8 @@
 // Prisma schema for GradeDescent backend
 generator client {
   provider = "prisma-client-js"
+  // Explicit output path required for Prisma 7+; use .prisma forwarder
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
