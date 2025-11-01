@@ -1,0 +1,114 @@
+// Prisma schema for GradeDescent backend
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  INSTRUCTOR
+  TA
+  STUDENT
+}
+
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  emailVerifiedAt DateTime?
+  name            String?
+  pictureUrl      String?
+  passwordHash    String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  accounts        OAuthAccount[]
+  memberships     CourseMembership[]
+  magicTokens     MagicLinkToken[]
+  createdCourses  Course[]         @relation("CourseOwner")
+  serviceTokens   ServiceToken[]
+}
+
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  provider          String
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         DateTime?
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Course {
+  id           String             @id @default(cuid())
+  title        String
+  code         String?
+  description  String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  createdById  String
+  owner        User               @relation("CourseOwner", fields: [createdById], references: [id])
+
+  memberships  CourseMembership[]
+}
+
+model CourseMembership {
+  id        String   @id @default(cuid())
+  userId    String
+  courseId  String
+  role      Role
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId, role])
+}
+
+model MagicLinkToken {
+  id         String   @id @default(cuid())
+  userId     String?
+  email      String
+  token      String   @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model IdempotencyKey {
+  id           String   @id @default(cuid())
+  key          String   @unique
+  userId       String?
+  method       String
+  path         String
+  requestHash  String?
+  statusCode   Int?
+  responseBody Json?
+  lockedAt     DateTime?
+  createdAt    DateTime @default(now())
+
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model ServiceToken {
+  id          String   @id @default(cuid())
+  name        String
+  tokenHash   String   @unique
+  scopes      String[]
+  createdById String
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+
+  createdBy   User     @relation(fields: [createdById], references: [id])
+}
+
