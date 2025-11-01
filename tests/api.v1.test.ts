@@ -9,6 +9,7 @@ type User = { id: string; email: string; name?: string | null; passwordHash?: st
 type Course = { id: string; title: string; code?: string | null; description?: string | null; createdById: string };
 type CourseMembership = { id: string; userId: string; courseId: string; role: 'OWNER' | 'INSTRUCTOR' | 'TA' | 'STUDENT'; createdAt?: Date };
 type IdempotencyKey = { key: string; userId?: string | null; method: string; path: string; statusCode?: number | null; responseBody?: any; lockedAt?: Date | null };
+type MagicLinkToken = { id: string; userId?: string | null; email: string; token: string; expiresAt: Date; consumedAt?: Date | null; createdAt?: Date };
 
 const db = {
   users: new Map<string, User>(),
@@ -16,6 +17,7 @@ const db = {
   courses: new Map<string, Course>(),
   memberships: new Map<string, CourseMembership>(),
   idempotency: new Map<string, IdempotencyKey>(),
+  magicTokens: new Map<string, MagicLinkToken>(),
 };
 
 let idSeq = 1;
@@ -138,6 +140,25 @@ const prismaMock = {
   serviceToken: {
     findUnique: vi.fn(async () => null),
   },
+  magicLinkToken: {
+    findUnique: vi.fn(async ({ where }: any) => {
+      if (where?.token) return db.magicTokens.get(where.token) || null;
+      return null;
+    }),
+    create: vi.fn(async ({ data }: any) => {
+      const id = cuid();
+      const row: MagicLinkToken = { id, userId: data.userId ?? null, email: data.email, token: data.token, expiresAt: data.expiresAt, consumedAt: null, createdAt: new Date() };
+      db.magicTokens.set(row.token, row);
+      return row as any;
+    }),
+    update: vi.fn(async ({ where, data }: any) => {
+      const row = db.magicTokens.get(where.token);
+      if (!row) throw new Error('not found');
+      Object.assign(row, data);
+      db.magicTokens.set(where.token, row);
+      return row;
+    }),
+  },
 };
 
 // We will stub Prisma and certain helpers after importing modules
@@ -153,11 +174,7 @@ beforeAll(async () => {
   p.courseMembership = prismaMock.courseMembership;
   p.idempotencyKey = prismaMock.idempotencyKey;
   p.serviceToken = prismaMock.serviceToken;
-
-  // Stub magic link service functions to avoid side effects
-  const authSvc: any = await import('../dist/services/auth.js');
-  vi.spyOn(authSvc, 'createMagicToken').mockResolvedValue({ token: 'ml.test', userId: 'u_ml', expiresAt: new Date().toISOString() });
-  vi.spyOn(authSvc, 'consumeMagicToken').mockResolvedValue({ id: 'u_ml', email: 'ml@example.com' });
+  p.magicLinkToken = prismaMock.magicLinkToken;
 
   // Stub JWT verification used by authenticate middleware
   const jwtMod: any = await import('../dist/utils/jwt.js');
@@ -238,16 +255,48 @@ describe('API v1', () => {
         .send({ email: 'ml@example.com' });
       expect(res.status).toBe(200);
       expect(res.body.message).toMatch(/link was sent/i);
+      // Token is persisted in mock DB
+      const tokens = Array.from((db as any).magicTokens.values()) as any[];
+      expect(tokens.some((t) => t.email === 'ml@example.com')).toBe(true);
     });
 
-    it('verifies magic token and returns JWT', async () => {
-      const res = await request(app)
+    it('verifies a stored magic token, then blocks reuse and expiry', async () => {
+      // create token
+      await request(app)
+        .post('/v1/auth/magic/request')
+        .set('Content-Type', 'application/json')
+        .send({ email: 'flow@example.com' });
+      const row = Array.from((db as any).magicTokens.values()).find((t: any) => t.email === 'flow@example.com')!;
+
+      // verify success
+      const ok = await request(app)
         .post('/v1/auth/magic/verify')
         .set('Content-Type', 'application/json')
-        .send({ token: 'ml.abcdefghijkl' });
-      expect(res.status).toBe(200);
-      expect(res.body.token).toBeTruthy();
-      expect(res.body.user?.email).toBe('ml@example.com');
+        .send({ token: row.token });
+      expect(ok.status).toBe(200);
+      expect(ok.body.token).toBeTruthy();
+
+      // second verify fails (consumed)
+      const again = await request(app)
+        .post('/v1/auth/magic/verify')
+        .set('Content-Type', 'application/json')
+        .send({ token: row.token });
+      expect(again.status).toBe(400);
+      expect(again.body.error?.type).toBe('validation_error');
+
+      // expire another token and expect 400
+      await request(app)
+        .post('/v1/auth/magic/request')
+        .set('Content-Type', 'application/json')
+        .send({ email: 'expired@example.com' });
+      const exp = Array.from((db as any).magicTokens.values()).find((t: any) => t.email === 'expired@example.com')!;
+      exp.expiresAt = new Date(Date.now() - 60_000); // in the past
+      const expiredRes = await request(app)
+        .post('/v1/auth/magic/verify')
+        .set('Content-Type', 'application/json')
+        .send({ token: exp.token });
+      expect(expiredRes.status).toBe(400);
+      expect(expiredRes.body.error?.type).toBe('validation_error');
     });
   });
 
