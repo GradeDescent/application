@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.DS_Store
+*.log
+coverage/
+
+# Prisma generated artifacts (client/output and local dev DB)
+# Keep prisma/migrations tracked.
+prisma/client/
+prisma/generated/
+prisma/dev.db
+prisma/dev.db-journal
+.prisma/
