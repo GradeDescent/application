@@ -10,10 +10,12 @@
   "main": "dist/index.js",
   "files": ["dist", "prisma"],
   "scripts": {
+    "pretest": "npm run build",
     "dev": "node --watch --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "lint": "eslint .",
+    "test": "vitest run",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy"
@@ -40,6 +42,8 @@
     "eslint-plugin-import": "^2.29.1",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.6.2",
-    "prisma": "6.7.0"
+    "prisma": "6.7.0",
+    "light-my-request": "^5.13.0",
+    "vitest": "^2.0.5"
   }
 }
