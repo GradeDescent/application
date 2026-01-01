@@ -16,19 +16,21 @@ export default function CoursesPage() {
   const coursesQuery = useCourses();
   const [title, setTitle] = useState('');
   const [code, setCode] = useState('');
+  const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const data = await apiFetch<{ course: { id: string } }>('/courses', {
         method: 'POST',
-        body: JSON.stringify({ title, code: code || undefined }),
+        body: JSON.stringify({ title, code: code || undefined, description: description || undefined }),
       });
       return data.course;
     },
     onSuccess: () => {
       setTitle('');
       setCode('');
+      setDescription('');
       setError(null);
       queryClient.invalidateQueries({ queryKey: ['courses'] });
     },
@@ -53,7 +55,7 @@ export default function CoursesPage() {
             </CardHeader>
             <CardContent>
               <form
-                className="grid gap-3 md:grid-cols-[1fr_200px_auto]"
+                className="grid gap-3 md:grid-cols-[1fr_200px_1fr_auto]"
                 onSubmit={(event) => {
                   event.preventDefault();
                   createMutation.mutate();
@@ -69,6 +71,11 @@ export default function CoursesPage() {
                   placeholder="Code (optional)"
                   value={code}
                   onChange={(event) => setCode(event.target.value)}
+                />
+                <Input
+                  placeholder="Description (optional)"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
                 />
                 <Button type="submit" disabled={createMutation.isPending || !title.trim()}>
                   Create
