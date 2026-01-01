@@ -79,41 +79,49 @@ export default function CoursesPage() {
             </CardHeader>
             <CardContent>
               <form
-                className="grid gap-3 md:grid-cols-[1fr_200px_1fr_auto]"
+                className="grid gap-4"
                 onSubmit={(event) => {
                   event.preventDefault();
                   createMutation.mutate();
                 }}
               >
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Title</label>
-                  <Input
-                    placeholder="Course title"
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    required
-                  />
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Title</label>
+                    <Input
+                      placeholder="Intro to Optimization"
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Course code</label>
+                    <Input
+                      placeholder="OPT-402"
+                      value={code}
+                      onChange={(event) => setCode(event.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Leave blank to auto-generate a code.</p>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Course code</label>
-                  <Input
-                    placeholder="Code (optional)"
-                    value={code}
-                    onChange={(event) => setCode(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-1 md:col-span-2">
+                <div className="space-y-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Description</label>
                   <textarea
-                    className="min-h-[96px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    placeholder="Description (optional)"
+                    className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="Share expectations, cadence, or policies for this course."
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
                   />
                 </div>
-                <Button type="submit" disabled={createMutation.isPending || !title.trim()}>
-                  Create
-                </Button>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    You will be added as the course owner.
+                  </p>
+                  <Button type="submit" disabled={createMutation.isPending || !title.trim()}>
+                    Create course
+                  </Button>
+                </div>
               </form>
               {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
             </CardContent>
