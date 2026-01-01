@@ -141,6 +141,13 @@ const prismaMock = {
       if (!where?.id) return null;
       return db.courses.get(where.id) || null;
     }),
+    update: vi.fn(async ({ where, data }: any) => {
+      const existing = db.courses.get(where.id);
+      if (!existing) throw new Error('not found');
+      const updated = { ...existing, ...data } as Course;
+      db.courses.set(where.id, updated);
+      return updated;
+    }),
   },
   courseMembership: {
     findUnique: vi.fn(async ({ where }: any) => {
@@ -665,6 +672,26 @@ describe('API v1', () => {
       const course = await prismaMock.course.create({ data: { title: 'Secured D', createdById: uid } });
       const res = await request(app).get(`/v1/courses/${course.id}`).set('Authorization', `Bearer valid.${uid}x`); // invalid token → no auth
       expect(res.status).toBe(403); // no membership
+    });
+
+    it('PATCH /v1/courses/:id allows owners to update title/description', async () => {
+      const uid = 'owner-update';
+      db.users.set(uid, { id: uid, email: 'owner-update@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Old Title', createdById: uid, description: 'Old desc' } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: uid, courseId: course.id } },
+        create: { userId: uid, courseId: course.id, role: 'OWNER' },
+        update: { role: 'OWNER' },
+      });
+
+      const res = await request(app)
+        .patch(`/v1/courses/${course.id}`)
+        .set('Authorization', `Bearer valid.${uid}`)
+        .set('Content-Type', 'application/json')
+        .send({ title: 'New Title', description: 'New desc' });
+      expect(res.status).toBe(200);
+      expect(res.body.course?.title).toBe('New Title');
+      expect(res.body.course?.description).toBe('New desc');
     });
   });
 

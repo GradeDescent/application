@@ -29,6 +29,17 @@ export function useCourses() {
   });
 }
 
+export function useCourse(courseId?: string) {
+  return useQuery({
+    queryKey: ['course', courseId],
+    queryFn: async () => {
+      const data = await apiFetch<{ course: Course }>(`/courses/${courseId}`);
+      return courseSchema.parse(data.course);
+    },
+    enabled: !!courseId,
+  });
+}
+
 export function useAssignments(courseId?: string) {
   return useQuery({
     queryKey: ['assignments', courseId],

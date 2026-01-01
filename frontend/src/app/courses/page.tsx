@@ -108,6 +108,9 @@ export default function CoursesPage() {
                     <Button asChild variant="outline">
                       <Link href={`/courses/${course.id}/assignments`}>Assignments</Link>
                     </Button>
+                    <Button asChild variant="ghost">
+                      <Link href={`/courses/${course.id}`}>Details</Link>
+                    </Button>
                   </CardContent>
                 </Card>
               ))

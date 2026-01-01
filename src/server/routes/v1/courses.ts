@@ -15,6 +15,11 @@ const createCourseSchema = z.object({
   description: z.string().optional(),
 });
 
+const updateCourseSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+});
+
 coursesRouter.post('/', authRequired, async (req, res, next) => {
   try {
     const body = createCourseSchema.parse(req.body);
@@ -75,6 +80,28 @@ coursesRouter.get('/:courseId', authRequired, requireCourseRole('courseId', ['OW
     const course = await prisma.course.findUnique({ where: { id: req.params.courseId } });
     if (!course) return res.status(404).json({ error: { type: 'not_found', message: 'Course not found' } });
     return jsonOk(res, { course });
+  } catch (err) {
+    next(err);
+  }
+});
+
+coursesRouter.patch('/:courseId', authRequired, requireCourseRole('courseId', ['OWNER']), async (req, res, next) => {
+  try {
+    const body = updateCourseSchema.parse(req.body);
+    if (body.title === undefined && body.description === undefined) {
+      return res.status(400).json({ error: { type: 'validation_error', message: 'No fields to update' } });
+    }
+    const course = await prisma.course.findUnique({ where: { id: req.params.courseId } });
+    if (!course) return res.status(404).json({ error: { type: 'not_found', message: 'Course not found' } });
+
+    const updated = await prisma.course.update({
+      where: { id: req.params.courseId },
+      data: {
+        ...(body.title !== undefined ? { title: body.title } : {}),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+      },
+    });
+    return jsonOk(res, { course: updated });
   } catch (err) {
     next(err);
   }
