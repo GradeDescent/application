@@ -51,6 +51,19 @@ export default function AssignmentsPage() {
     },
   });
 
+  const publishMutation = useMutation({
+    mutationFn: async ({ assignmentId, action }: { assignmentId: string; action: 'publish' | 'unpublish' }) => {
+      const data = await apiFetch<{ assignment: { id: string } }>(
+        `/courses/${courseId}/assignments/${assignmentId}/${action}`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      return data.assignment;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assignments', courseId] });
+    },
+  });
+
   return (
     <AuthGuard>
       <div className="min-h-screen bg-[linear-gradient(120deg,_rgba(72,169,166,0.12),transparent_45%),linear-gradient(240deg,_rgba(66,129,164,0.1),transparent_45%)]">
@@ -143,11 +156,31 @@ export default function AssignmentsPage() {
                       <span className="text-xs text-muted-foreground">{assignment.status}</span>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="flex items-center justify-between">
+                  <CardContent className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-sm text-muted-foreground">Total points: {assignment.totalPoints}</p>
-                    <Button asChild>
-                      <Link href={`/courses/${courseId}/assignments/${assignment.id}`}>Open</Link>
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      {assignment.status === 'DRAFT' ? (
+                        <Button
+                          variant="secondary"
+                          onClick={() => publishMutation.mutate({ assignmentId: assignment.id, action: 'publish' })}
+                          disabled={publishMutation.isPending}
+                        >
+                          Publish
+                        </Button>
+                      ) : null}
+                      {assignment.status === 'PUBLISHED' ? (
+                        <Button
+                          variant="outline"
+                          onClick={() => publishMutation.mutate({ assignmentId: assignment.id, action: 'unpublish' })}
+                          disabled={publishMutation.isPending}
+                        >
+                          Unpublish
+                        </Button>
+                      ) : null}
+                      <Button asChild>
+                        <Link href={`/courses/${courseId}/assignments/${assignment.id}`}>Open</Link>
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))
