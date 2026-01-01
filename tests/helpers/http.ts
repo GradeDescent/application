@@ -67,7 +67,7 @@ export function request(app: AppLike) {
     get: (url: string) => new InjectBuilder(app, 'GET', url),
     post: (url: string) => new InjectBuilder(app, 'POST', url),
     put: (url: string) => new InjectBuilder(app, 'PUT', url),
+    patch: (url: string) => new InjectBuilder(app, 'PATCH', url),
     delete: (url: string) => new InjectBuilder(app, 'DELETE', url),
   };
 }
-
