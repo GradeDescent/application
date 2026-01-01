@@ -21,10 +21,16 @@ export function SiteHeader({
     <header className="border-b bg-background/80 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
         <div className="flex items-center gap-4">
-          <Link href="/courses" className="flex items-center gap-3">
-            <img src="/icon.svg" alt="GradeDescent" className="h-10 w-10" />
+          <div className="flex items-center gap-3">
+            <Link href="/courses" className="flex items-center gap-3">
+              <img src="/icon.svg" alt="GradeDescent" className="h-10 w-10" />
+            </Link>
             <div>
-              <p className="text-lg font-semibold">GradeDescent</p>
+              <p className="text-lg font-semibold">
+                <Link href="/courses" className="hover:text-foreground/80">
+                  GradeDescent
+                </Link>
+              </p>
               {breadcrumbs && breadcrumbs.length ? (
                 <nav className="text-xs text-muted-foreground">
                   {breadcrumbs.map((crumb, idx) => (
@@ -44,7 +50,7 @@ export function SiteHeader({
                 <p className="text-xs text-muted-foreground">{subtitle || title}</p>
               )}
             </div>
-          </Link>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {user ? <span className="text-xs text-muted-foreground">{user.email}</span> : null}

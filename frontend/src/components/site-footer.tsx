@@ -1,9 +1,11 @@
 export function SiteFooter() {
+  const year = new Date().getFullYear();
+
   return (
     <footer className="border-t bg-background/80">
       <div className="mx-auto flex max-w-5xl flex-col gap-2 px-6 py-6 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <span>Copyright 2026 the GradeDescent team.</span>
+          <span>Copyright {year}, the GradeDescent team.</span>
           <a className="underline" href="mailto:support@gradedescent.com">
             support@gradedescent.com
           </a>
