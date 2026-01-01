@@ -173,6 +173,129 @@ Assignments
   - Success 200: `{ assignment: Assignment }` (status `ARCHIVED`)
   - 403 forbidden, 404 not found
 
+Submissions
+- POST `/assignments/:assignmentId/submissions`
+  - Auth: required
+  - Roles: student enrolled in the course
+  - Headers: optional `Idempotency-Key`
+  - Body: `{}` (recommended)
+  - Success 201: `{ submission: Submission }`
+  - Notes: returns an existing `UPLOADING` submission for the student if one already exists.
+
+- GET `/assignments/:assignmentId/submissions`
+  - Auth: required
+  - Roles: any membership
+  - Query: `userId?=me|<userId>` (staff only for arbitrary userId), `limit?`, `cursor?`
+  - Success 200: `{ items: Submission[], next_cursor: string|null }`
+  - Notes: students only see their own submissions.
+
+- GET `/submissions/:submissionId`
+  - Auth: required
+  - Roles: owner student or staff
+  - Success 200: `{ submission: Submission }`
+
+- POST `/submissions/:submissionId/submit`
+  - Auth: required
+  - Roles: owner student or staff
+  - Headers: `Content-Type: application/json`, optional `Idempotency-Key`
+  - Body: `{ primaryArtifactId: string }`
+  - Success 200: `{ submission: Submission }`
+  - 400 validation_error (missing/invalid primaryArtifactId, artifact not owned by submission)
+  - 409 conflict (already submitted)
+
+- DELETE `/submissions/:submissionId`
+  - Auth: required
+  - Roles: owner student or staff
+  - Success 200: `{ deleted: true }`
+  - 409 conflict if status is not `UPLOADING`
+
+Artifacts
+- GET `/submissions/:submissionId/artifacts`
+  - Auth: required
+  - Roles: owner student or staff
+  - Success 200: `{ items: Artifact[] }` (texBody omitted)
+
+- POST `/submissions/:submissionId/artifacts/tex`
+  - Auth: required
+  - Roles: owner student or staff
+  - Headers: `Content-Type: application/json`, optional `Idempotency-Key`
+  - Body: `{ texBody: string, contentType?: "application/x-tex"|"text/plain" }`
+  - Success 201: `{ artifact: Artifact }`
+  - 409 conflict if submission is not `UPLOADING`
+
+- POST `/submissions/:submissionId/artifacts/pdf/presign`
+  - Auth: required
+  - Roles: owner student or staff
+  - Headers: `Content-Type: application/json`, optional `Idempotency-Key`
+  - Body: `{ contentType: "application/pdf", filename?: string, sizeBytes?: number }`
+  - Success 201: `{ artifactId: string, upload: { url, method, headers, expiresAt } }`
+  - 409 conflict if submission is not `UPLOADING`
+
+- POST `/artifacts/:artifactId/complete`
+  - Auth: required
+  - Roles: owner student or staff
+  - Headers: `Content-Type: application/json`, optional `Idempotency-Key`
+  - Body: `{ sha256: string, sizeBytes: number }`
+  - Success 200: `{ artifact: Artifact }`
+  - 409 conflict if already completed or submission not `UPLOADING`
+
+- GET `/artifacts/:artifactId`
+  - Auth: required
+  - Roles: owner student or staff
+  - Success 200: `{ artifact: Artifact }` (texBody omitted)
+
+- GET `/artifacts/:artifactId/body`
+  - Auth: required
+  - Roles: owner student or staff
+  - Success 200: `{ texBody: string }`
+  - 400 validation_error if artifact is not TeX
+
+- GET `/artifacts/:artifactId/download`
+  - Auth: required
+  - Roles: owner student or staff
+  - Success 200: `{ url: string, expiresAt: string }`
+  - 400 validation_error if artifact is not PDF
+
+- DELETE `/artifacts/:artifactId`
+  - Auth: required
+  - Roles: owner student or staff
+  - Success 200: `{ deleted: true }`
+  - 409 conflict if submission is not `UPLOADING`
+
+Evaluations
+- GET `/submissions/:submissionId/evaluations`
+  - Auth: required
+  - Roles: owner student or staff
+  - Success 200: `{ items: Evaluation[] }`
+
+- POST `/submissions/:submissionId/evaluations`
+  - Auth: required
+  - Roles: staff
+  - Headers: `Content-Type: application/json`, optional `Idempotency-Key`
+  - Body: `{ model?: string }`
+  - Success 202: `{ evaluation: Evaluation }`
+  - 409 conflict if canonical TeX does not exist
+
+- GET `/evaluations/:evaluationId`
+  - Auth: required
+  - Roles: owner student or staff
+  - Success 200: `{ evaluation: Evaluation }`
+
+Recommended Client Flows
+- TeX submission flow
+  - POST `/assignments/:id/submissions` → `submissionId`
+  - POST `/submissions/:id/artifacts/tex` → `artifactId`
+  - POST `/submissions/:id/submit` with `{ primaryArtifactId: artifactId }`
+  - Poll `GET /submissions/:id` or `GET /submissions/:id/evaluations`
+
+- PDF submission flow (S3)
+  - POST `/assignments/:id/submissions` → `submissionId`
+  - POST `/submissions/:id/artifacts/pdf/presign` → `{ artifactId, upload }`
+  - Client `PUT` to `upload.url`
+  - POST `/artifacts/:artifactId/complete` with `{ sha256, sizeBytes }`
+  - POST `/submissions/:id/submit` with `{ primaryArtifactId: artifactId }`
+  - Poll `GET /submissions/:id` or `GET /submissions/:id/evaluations`
+
 Data Shapes
 - User
   - `{ id: string, email: string, name?: string, pictureUrl?: string, createdAt: string, updatedAt: string }`
@@ -183,6 +306,12 @@ Data Shapes
   - `{ id: string, userId: string, courseId: string, role: "OWNER"|"INSTRUCTOR"|"TA"|"STUDENT", createdAt: string }`
 - Assignment
   - `{ id: string, courseId: string, title: string, dueAt?: string, totalPoints: number, sourceTex: string, status: "DRAFT"|"PUBLISHED"|"ARCHIVED", createdById: string, createdAt: string, updatedAt: string, publishedAt?: string }`
+- Submission
+  - `{ id: string, assignmentId: string, courseId: string, userId: string, number: number, status: "UPLOADING"|"SUBMITTED"|"PROCESSING"|"READY"|"FAILED", primaryArtifactId?: string, canonicalTexArtifactId?: string, createdAt: string, submittedAt?: string, errorMessage?: string|null }`
+- Artifact
+  - `{ id: string, submissionId: string, kind: "PDF"|"TEX", origin: "UPLOAD"|"DERIVED", storage: "S3"|"DB", sha256?: string, sizeBytes?: number, contentType?: string, createdAt: string, s3?: { bucket: string, key: string } }`
+- Evaluation
+  - `{ id: string, submissionId: string, status: "QUEUED"|"RUNNING"|"COMPLETED"|"FAILED", model?: string, score?: { points: number, outOf: number }, result?: object, createdAt: string, completedAt?: string, errorMessage?: string|null }`
 
 Error Behavior & Status Codes
 - 400: Validation errors from request body/query (includes `error.fields` map)
