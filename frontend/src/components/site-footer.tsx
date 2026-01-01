@@ -21,6 +21,9 @@ export function SiteFooter() {
           <a className="underline" href="/privacy">
             Privacy
           </a>
+          <a className="underline" href="/terms">
+            Terms
+          </a>
         </div>
       </div>
     </footer>
