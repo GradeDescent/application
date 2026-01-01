@@ -133,7 +133,7 @@ export default function CoursesPage() {
             </CardHeader>
             <CardContent>
               <p className="mb-3 text-sm text-muted-foreground">
-                Your instructor should have provided a course code. Enter it here to join as a student.
+                Your instructor may have provided you with a course code. Enter it here to join as a student.
               </p>
               <form
                 className="flex flex-col gap-3 md:flex-row"
