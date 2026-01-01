@@ -7,6 +7,9 @@ Overview
 - RBAC via course memberships (owner, instructor, ta, student)
 - API base: `https://api.gradedescent.com/v1`
 
+Detailed API Routes
+- See `docs/routes.md` for request/response formats, roles, pagination, and examples.
+
 Getting Started
 - Copy `.env.example` to `.env` and set `DATABASE_URL` and `JWT_SECRET`.
 - Install dependencies: `npm install`
@@ -43,4 +46,3 @@ RBAC
 Notes
 - Real rate limiting and email providers should be wired in production (Redis, SES/SendGrid).
 - OAuth routes are placeholders; integrate via OAuth library or provider SDKs.
-

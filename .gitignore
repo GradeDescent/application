@@ -4,6 +4,10 @@ dist/
 .DS_Store
 *.log
 coverage/
+*~
+\#*\#
+.\#*
+*.swp
 
 # Prisma generated artifacts (client/output and local dev DB)
 # Keep prisma/migrations tracked.
