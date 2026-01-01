@@ -929,5 +929,110 @@ describe('API v1', () => {
       expect(complete.status).toBe(200);
       expect(complete.body.artifact?.sha256).toBe('abc123');
     });
+
+    it('rejects submit twice and prevents changes after submit', async () => {
+      const owner = 'sub_owner5';
+      const student = 'sub_student5';
+      db.users.set(owner, { id: owner, email: 'sub_owner5@example.com' });
+      db.users.set(student, { id: student, email: 'sub_student5@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Sub 105', createdById: owner } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: owner, courseId: course.id } }, create: { userId: owner, courseId: course.id, role: 'OWNER' }, update: { role: 'OWNER' } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: student, courseId: course.id } }, create: { userId: student, courseId: course.id, role: 'STUDENT' }, update: { role: 'STUDENT' } });
+      const assignment = await prismaMock.assignment.create({
+        data: { courseId: course.id, title: 'HW', totalPoints: 10, sourceTex: 'x', createdById: owner, status: 'PUBLISHED', publishedAt: new Date() },
+      });
+      const submission = await prismaMock.submission.create({ data: { assignmentId: assignment.id, courseId: course.id, userId: student, number: 1, status: 'UPLOADING' } });
+
+      const texRes = await request(app)
+        .post(`/v1/submissions/${submission.id}/artifacts/tex`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ texBody: '\\n' });
+      expect(texRes.status).toBe(201);
+
+      const submitRes = await request(app)
+        .post(`/v1/submissions/${submission.id}/submit`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ primaryArtifactId: texRes.body.artifact.id });
+      expect(submitRes.status).toBe(200);
+
+      const submitAgain = await request(app)
+        .post(`/v1/submissions/${submission.id}/submit`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ primaryArtifactId: texRes.body.artifact.id });
+      expect(submitAgain.status).toBe(409);
+
+      const deleteAfterSubmit = await request(app)
+        .delete(`/v1/submissions/${submission.id}`)
+        .set('Authorization', `Bearer valid.${student}`);
+      expect(deleteAfterSubmit.status).toBe(409);
+
+      const texAfterSubmit = await request(app)
+        .post(`/v1/submissions/${submission.id}/artifacts/tex`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ texBody: 'later' });
+      expect(texAfterSubmit.status).toBe(409);
+    });
+
+    it('prevents students from accessing other submissions or evaluations', async () => {
+      const owner = 'sub_owner6';
+      const studentA = 'sub_student6a';
+      const studentB = 'sub_student6b';
+      db.users.set(owner, { id: owner, email: 'sub_owner6@example.com' });
+      db.users.set(studentA, { id: studentA, email: 'sub_student6a@example.com' });
+      db.users.set(studentB, { id: studentB, email: 'sub_student6b@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Sub 106', createdById: owner } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: owner, courseId: course.id } }, create: { userId: owner, courseId: course.id, role: 'OWNER' }, update: { role: 'OWNER' } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: studentA, courseId: course.id } }, create: { userId: studentA, courseId: course.id, role: 'STUDENT' }, update: { role: 'STUDENT' } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: studentB, courseId: course.id } }, create: { userId: studentB, courseId: course.id, role: 'STUDENT' }, update: { role: 'STUDENT' } });
+      const assignment = await prismaMock.assignment.create({
+        data: { courseId: course.id, title: 'HW', totalPoints: 10, sourceTex: 'x', createdById: owner, status: 'PUBLISHED', publishedAt: new Date() },
+      });
+      const submission = await prismaMock.submission.create({ data: { assignmentId: assignment.id, courseId: course.id, userId: studentA, number: 1, status: 'UPLOADING' } });
+      const artifact = await prismaMock.artifact.create({
+        data: { submissionId: submission.id, kind: 'TEX', origin: 'UPLOAD', storage: 'DB', texBody: 'x', contentType: 'text/plain' },
+      });
+      const evaluation = await prismaMock.evaluation.create({ data: { submissionId: submission.id, status: 'QUEUED', model: 'default' } });
+
+      const getSubmission = await request(app)
+        .get(`/v1/submissions/${submission.id}`)
+        .set('Authorization', `Bearer valid.${studentB}`);
+      expect(getSubmission.status).toBe(403);
+
+      const listArtifacts = await request(app)
+        .get(`/v1/submissions/${submission.id}/artifacts`)
+        .set('Authorization', `Bearer valid.${studentB}`);
+      expect(listArtifacts.status).toBe(403);
+
+      const getArtifact = await request(app)
+        .get(`/v1/artifacts/${artifact.id}`)
+        .set('Authorization', `Bearer valid.${studentB}`);
+      expect(getArtifact.status).toBe(403);
+
+      const getBody = await request(app)
+        .get(`/v1/artifacts/${artifact.id}/body`)
+        .set('Authorization', `Bearer valid.${studentB}`);
+      expect(getBody.status).toBe(403);
+
+      const listEvals = await request(app)
+        .get(`/v1/submissions/${submission.id}/evaluations`)
+        .set('Authorization', `Bearer valid.${studentB}`);
+      expect(listEvals.status).toBe(403);
+
+      const getEval = await request(app)
+        .get(`/v1/evaluations/${evaluation.id}`)
+        .set('Authorization', `Bearer valid.${studentB}`);
+      expect(getEval.status).toBe(403);
+
+      const createEval = await request(app)
+        .post(`/v1/submissions/${submission.id}/evaluations`)
+        .set('Authorization', `Bearer valid.${studentB}`)
+        .set('Content-Type', 'application/json')
+        .send({});
+      expect(createEval.status).toBe(403);
+    });
   });
 });
