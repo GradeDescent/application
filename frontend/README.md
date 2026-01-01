@@ -38,3 +38,10 @@ The frontend calls `/api/v1/...` in the browser. Next.js rewrites those requests
 ```bash
 npm run lint
 ```
+
+## Favicon build
+Favicons are generated from `public/icon.svg` with a solid `#e4dfda` background.
+
+```bash
+npm run favicon:build
+```
