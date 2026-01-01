@@ -22,6 +22,36 @@ enum AssignmentStatus {
   ARCHIVED
 }
 
+enum SubmissionStatus {
+  UPLOADING
+  SUBMITTED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ArtifactKind {
+  PDF
+  TEX
+}
+
+enum ArtifactStorage {
+  S3
+  DB
+}
+
+enum ArtifactOrigin {
+  UPLOAD
+  DERIVED
+}
+
+enum EvaluationStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
 model User {
   id              String    @id @default(cuid())
   email           String    @unique
@@ -39,6 +69,7 @@ model User {
   serviceTokens   ServiceToken[]
   idempotencyKeys IdempotencyKey[]
   createdAssignments Assignment[]
+  submissions     Submission[]
 }
 
 model OAuthAccount {
@@ -66,6 +97,7 @@ model Course {
 
   memberships CourseMembership[]
   assignments Assignment[]
+  submissions Submission[]
 }
 
 model CourseMembership {
@@ -138,6 +170,75 @@ model Assignment {
   course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
   createdBy User  @relation(fields: [createdById], references: [id])
 
+  submissions Submission[]
+
   @@index([courseId, status])
   @@index([courseId])
+}
+
+model Submission {
+  id                    String           @id @default(cuid())
+  assignmentId          String
+  courseId              String
+  userId                String
+  number                Int
+  status                SubmissionStatus @default(UPLOADING)
+  primaryArtifactId     String?
+  canonicalTexArtifactId String?
+  createdAt             DateTime         @default(now())
+  submittedAt           DateTime?
+  errorMessage          String?
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  course     Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  primaryArtifact     Artifact? @relation("PrimaryArtifact", fields: [primaryArtifactId], references: [id])
+  canonicalTexArtifact Artifact? @relation("CanonicalTexArtifact", fields: [canonicalTexArtifactId], references: [id])
+
+  artifacts   Artifact[]
+  evaluations Evaluation[]
+
+  @@unique([assignmentId, userId, number])
+  @@index([assignmentId, userId])
+  @@index([courseId, userId])
+}
+
+model Artifact {
+  id          String          @id @default(cuid())
+  submissionId String
+  kind        ArtifactKind
+  origin      ArtifactOrigin
+  storage     ArtifactStorage
+  sha256      String?
+  sizeBytes   Int?
+  contentType String?
+  s3Bucket    String?
+  s3Key       String?
+  texBody     String?
+  createdAt   DateTime        @default(now())
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  primaryForSubmission   Submission[] @relation("PrimaryArtifact")
+  canonicalForSubmission Submission[] @relation("CanonicalTexArtifact")
+
+  @@index([submissionId])
+}
+
+model Evaluation {
+  id          String           @id @default(cuid())
+  submissionId String
+  status      EvaluationStatus @default(QUEUED)
+  model       String?
+  scorePoints Int?
+  scoreOutOf  Int?
+  result      Json?
+  createdAt   DateTime         @default(now())
+  completedAt DateTime?
+  errorMessage String?
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
 }

@@ -23,6 +23,50 @@ type Assignment = {
   updatedAt?: Date;
   publishedAt?: Date | null;
 };
+type SubmissionStatus = 'UPLOADING' | 'SUBMITTED' | 'PROCESSING' | 'READY' | 'FAILED';
+type Submission = {
+  id: string;
+  assignmentId: string;
+  courseId: string;
+  userId: string;
+  number: number;
+  status: SubmissionStatus;
+  primaryArtifactId?: string | null;
+  canonicalTexArtifactId?: string | null;
+  createdAt?: Date;
+  submittedAt?: Date | null;
+  errorMessage?: string | null;
+};
+type ArtifactKind = 'PDF' | 'TEX';
+type ArtifactStorage = 'S3' | 'DB';
+type ArtifactOrigin = 'UPLOAD' | 'DERIVED';
+type Artifact = {
+  id: string;
+  submissionId: string;
+  kind: ArtifactKind;
+  origin: ArtifactOrigin;
+  storage: ArtifactStorage;
+  sha256?: string | null;
+  sizeBytes?: number | null;
+  contentType?: string | null;
+  s3Bucket?: string | null;
+  s3Key?: string | null;
+  texBody?: string | null;
+  createdAt?: Date;
+};
+type EvaluationStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+type Evaluation = {
+  id: string;
+  submissionId: string;
+  status: EvaluationStatus;
+  model?: string | null;
+  scorePoints?: number | null;
+  scoreOutOf?: number | null;
+  result?: any;
+  createdAt?: Date;
+  completedAt?: Date | null;
+  errorMessage?: string | null;
+};
 type IdempotencyKey = { key: string; userId?: string | null; method: string; path: string; statusCode?: number | null; responseBody?: any; lockedAt?: Date | null };
 type MagicLinkToken = { id: string; userId?: string | null; email: string; token: string; expiresAt: Date; consumedAt?: Date | null; createdAt?: Date };
 
@@ -32,6 +76,9 @@ const db = {
   courses: new Map<string, Course>(),
   memberships: new Map<string, CourseMembership>(),
   assignments: new Map<string, Assignment>(),
+  submissions: new Map<string, Submission>(),
+  artifacts: new Map<string, Artifact>(),
+  evaluations: new Map<string, Evaluation>(),
   idempotency: new Map<string, IdempotencyKey>(),
   magicTokens: new Map<string, MagicLinkToken>(),
 };
@@ -158,6 +205,10 @@ const prismaMock = {
       db.assignments.set(id, row);
       return row;
     }),
+    findUnique: vi.fn(async ({ where }: any) => {
+      if (!where?.id) return null;
+      return db.assignments.get(where.id) || null;
+    }),
     findMany: vi.fn(async ({ where, take, cursor, orderBy }: any) => {
       let arr = Array.from(db.assignments.values()).filter((a) => a.courseId === where.courseId);
       if (where.status) {
@@ -191,6 +242,140 @@ const prismaMock = {
       db.assignments.set(where.id, updated);
       return updated;
     }),
+  },
+  submission: {
+    create: vi.fn(async ({ data }: any) => {
+      const id = cuid();
+      const now = new Date();
+      const row: Submission = {
+        id,
+        assignmentId: data.assignmentId,
+        courseId: data.courseId,
+        userId: data.userId,
+        number: data.number,
+        status: data.status ?? 'UPLOADING',
+        primaryArtifactId: data.primaryArtifactId ?? null,
+        canonicalTexArtifactId: data.canonicalTexArtifactId ?? null,
+        createdAt: now,
+        submittedAt: data.submittedAt ?? null,
+        errorMessage: data.errorMessage ?? null,
+      };
+      db.submissions.set(id, row);
+      return row;
+    }),
+    findFirst: vi.fn(async ({ where, orderBy }: any) => {
+      let arr = Array.from(db.submissions.values());
+      if (where?.assignmentId) arr = arr.filter((s) => s.assignmentId === where.assignmentId);
+      if (where?.userId) arr = arr.filter((s) => s.userId === where.userId);
+      if (where?.status) arr = arr.filter((s) => s.status === where.status);
+      if (orderBy?.createdAt) {
+        arr.sort((a, b) => (a.createdAt! < b.createdAt! ? -1 : 1));
+      } else if (orderBy?.id) {
+        arr.sort((a, b) => (a.id < b.id ? -1 : 1));
+      }
+      return arr[0] ?? null;
+    }),
+    findMany: vi.fn(async ({ where, take, cursor, orderBy }: any) => {
+      let arr = Array.from(db.submissions.values());
+      if (where?.assignmentId) arr = arr.filter((s) => s.assignmentId === where.assignmentId);
+      if (where?.userId) arr = arr.filter((s) => s.userId === where.userId);
+      if (orderBy?.id) arr.sort((a, b) => (a.id < b.id ? -1 : 1));
+      let start = 0;
+      if (cursor) {
+        const idx = arr.findIndex((s) => s.id === cursor.id);
+        start = idx >= 0 ? idx + 1 : 0;
+      }
+      const page = typeof take === 'number' ? arr.slice(start, start + take) : arr;
+      return page;
+    }),
+    aggregate: vi.fn(async ({ where }: any) => {
+      const arr = Array.from(db.submissions.values()).filter((s) => s.assignmentId === where.assignmentId && s.userId === where.userId);
+      const max = arr.reduce((acc, s) => Math.max(acc, s.number), 0);
+      return { _max: { number: arr.length ? max : null } };
+    }),
+    findUnique: vi.fn(async ({ where }: any) => db.submissions.get(where.id) || null),
+    update: vi.fn(async ({ where, data }: any) => {
+      const row = db.submissions.get(where.id);
+      if (!row) throw new Error('not found');
+      const updated = { ...row, ...data } as Submission;
+      db.submissions.set(where.id, updated);
+      return updated;
+    }),
+    delete: vi.fn(async ({ where }: any) => {
+      const row = db.submissions.get(where.id);
+      if (!row) throw new Error('not found');
+      db.submissions.delete(where.id);
+      return row;
+    }),
+  },
+  artifact: {
+    create: vi.fn(async ({ data }: any) => {
+      const id = cuid();
+      const now = new Date();
+      const row: Artifact = {
+        id,
+        submissionId: data.submissionId,
+        kind: data.kind,
+        origin: data.origin,
+        storage: data.storage,
+        sha256: data.sha256 ?? null,
+        sizeBytes: data.sizeBytes ?? null,
+        contentType: data.contentType ?? null,
+        s3Bucket: data.s3Bucket ?? null,
+        s3Key: data.s3Key ?? null,
+        texBody: data.texBody ?? null,
+        createdAt: now,
+      };
+      db.artifacts.set(id, row);
+      return row;
+    }),
+    findMany: vi.fn(async ({ where }: any) => {
+      return Array.from(db.artifacts.values()).filter((a) => a.submissionId === where.submissionId);
+    }),
+    findFirst: vi.fn(async ({ where }: any) => {
+      const row = db.artifacts.get(where.id);
+      if (!row) return null;
+      if (where.submissionId && row.submissionId !== where.submissionId) return null;
+      return row;
+    }),
+    findUnique: vi.fn(async ({ where }: any) => db.artifacts.get(where.id) || null),
+    update: vi.fn(async ({ where, data }: any) => {
+      const row = db.artifacts.get(where.id);
+      if (!row) throw new Error('not found');
+      const updated = { ...row, ...data } as Artifact;
+      db.artifacts.set(where.id, updated);
+      return updated;
+    }),
+    delete: vi.fn(async ({ where }: any) => {
+      const row = db.artifacts.get(where.id);
+      if (!row) throw new Error('not found');
+      db.artifacts.delete(where.id);
+      return row;
+    }),
+  },
+  evaluation: {
+    create: vi.fn(async ({ data }: any) => {
+      const id = cuid();
+      const now = new Date();
+      const row: Evaluation = {
+        id,
+        submissionId: data.submissionId,
+        status: data.status ?? 'QUEUED',
+        model: data.model ?? null,
+        scorePoints: data.scorePoints ?? null,
+        scoreOutOf: data.scoreOutOf ?? null,
+        result: data.result ?? null,
+        createdAt: now,
+        completedAt: data.completedAt ?? null,
+        errorMessage: data.errorMessage ?? null,
+      };
+      db.evaluations.set(id, row);
+      return row;
+    }),
+    findMany: vi.fn(async ({ where }: any) => {
+      return Array.from(db.evaluations.values()).filter((e) => e.submissionId === where.submissionId);
+    }),
+    findUnique: vi.fn(async ({ where }: any) => db.evaluations.get(where.id) || null),
   },
   idempotencyKey: {
     findUnique: vi.fn(async ({ where }: any) => db.idempotency.get(where.key) || null),
@@ -243,6 +428,9 @@ beforeAll(async () => {
   p.course = prismaMock.course;
   p.courseMembership = prismaMock.courseMembership;
   p.assignment = prismaMock.assignment;
+  p.submission = prismaMock.submission;
+  p.artifact = prismaMock.artifact;
+  p.evaluation = prismaMock.evaluation;
   p.idempotencyKey = prismaMock.idempotencyKey;
   p.serviceToken = prismaMock.serviceToken;
   p.magicLinkToken = prismaMock.magicLinkToken;
@@ -612,6 +800,134 @@ describe('API v1', () => {
         .send({ title: 'Idem', code: 'ID1' });
       expect(second.status).toBe(201);
       expect(second.body).toEqual(first.body);
+    });
+  });
+
+  describe('Submissions', () => {
+    it('students can create submissions for published assignments', async () => {
+      const owner = 'sub_owner';
+      const student = 'sub_student';
+      db.users.set(owner, { id: owner, email: 'sub_owner@example.com' });
+      db.users.set(student, { id: student, email: 'sub_student@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Sub 101', createdById: owner } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: owner, courseId: course.id } }, create: { userId: owner, courseId: course.id, role: 'OWNER' }, update: { role: 'OWNER' } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: student, courseId: course.id } }, create: { userId: student, courseId: course.id, role: 'STUDENT' }, update: { role: 'STUDENT' } });
+      const assignment = await prismaMock.assignment.create({
+        data: { courseId: course.id, title: 'HW', totalPoints: 10, sourceTex: 'x', createdById: owner, status: 'PUBLISHED', publishedAt: new Date() },
+      });
+
+      const res = await request(app)
+        .post(`/v1/assignments/${assignment.id}/submissions`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({});
+      expect(res.status).toBe(201);
+      expect(res.body.submission?.status).toBe('UPLOADING');
+      expect(res.body.submission?.number).toBe(1);
+    });
+
+    it('staff can list all submissions; students see only their own', async () => {
+      const owner = 'sub_owner2';
+      const studentA = 'sub_studentA';
+      const studentB = 'sub_studentB';
+      db.users.set(owner, { id: owner, email: 'sub_owner2@example.com' });
+      db.users.set(studentA, { id: studentA, email: 'sub_studentA@example.com' });
+      db.users.set(studentB, { id: studentB, email: 'sub_studentB@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Sub 102', createdById: owner } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: owner, courseId: course.id } }, create: { userId: owner, courseId: course.id, role: 'OWNER' }, update: { role: 'OWNER' } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: studentA, courseId: course.id } }, create: { userId: studentA, courseId: course.id, role: 'STUDENT' }, update: { role: 'STUDENT' } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: studentB, courseId: course.id } }, create: { userId: studentB, courseId: course.id, role: 'STUDENT' }, update: { role: 'STUDENT' } });
+      const assignment = await prismaMock.assignment.create({
+        data: { courseId: course.id, title: 'HW', totalPoints: 10, sourceTex: 'x', createdById: owner, status: 'PUBLISHED', publishedAt: new Date() },
+      });
+      await prismaMock.submission.create({ data: { assignmentId: assignment.id, courseId: course.id, userId: studentA, number: 1, status: 'UPLOADING' } });
+      await prismaMock.submission.create({ data: { assignmentId: assignment.id, courseId: course.id, userId: studentB, number: 1, status: 'UPLOADING' } });
+
+      const staffList = await request(app)
+        .get(`/v1/assignments/${assignment.id}/submissions`)
+        .set('Authorization', `Bearer valid.${owner}`);
+      expect(staffList.status).toBe(200);
+      expect(staffList.body.items?.length).toBe(2);
+
+      const studentList = await request(app)
+        .get(`/v1/assignments/${assignment.id}/submissions`)
+        .set('Authorization', `Bearer valid.${studentA}`);
+      expect(studentList.status).toBe(200);
+      expect(studentList.body.items?.length).toBe(1);
+      expect(studentList.body.items?.[0].userId).toBe(studentA);
+    });
+
+    it('submits TeX and exposes evaluations for staff', async () => {
+      const owner = 'sub_owner3';
+      const student = 'sub_student3';
+      db.users.set(owner, { id: owner, email: 'sub_owner3@example.com' });
+      db.users.set(student, { id: student, email: 'sub_student3@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Sub 103', createdById: owner } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: owner, courseId: course.id } }, create: { userId: owner, courseId: course.id, role: 'OWNER' }, update: { role: 'OWNER' } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: student, courseId: course.id } }, create: { userId: student, courseId: course.id, role: 'STUDENT' }, update: { role: 'STUDENT' } });
+      const assignment = await prismaMock.assignment.create({
+        data: { courseId: course.id, title: 'HW', totalPoints: 10, sourceTex: 'x', createdById: owner, status: 'PUBLISHED', publishedAt: new Date() },
+      });
+      const submission = await prismaMock.submission.create({ data: { assignmentId: assignment.id, courseId: course.id, userId: student, number: 1, status: 'UPLOADING' } });
+
+      const texRes = await request(app)
+        .post(`/v1/submissions/${submission.id}/artifacts/tex`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ texBody: '\\n' });
+      expect(texRes.status).toBe(201);
+
+      const submitRes = await request(app)
+        .post(`/v1/submissions/${submission.id}/submit`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ primaryArtifactId: texRes.body.artifact.id });
+      expect(submitRes.status).toBe(200);
+      expect(submitRes.body.submission?.status).toBe('READY');
+
+      const evalRes = await request(app)
+        .post(`/v1/submissions/${submission.id}/evaluations`)
+        .set('Authorization', `Bearer valid.${owner}`)
+        .set('Content-Type', 'application/json')
+        .send({});
+      expect(evalRes.status).toBe(202);
+      expect(evalRes.body.evaluation?.status).toBe('QUEUED');
+
+      const evalList = await request(app)
+        .get(`/v1/submissions/${submission.id}/evaluations`)
+        .set('Authorization', `Bearer valid.${student}`);
+      expect(evalList.status).toBe(200);
+      expect(Array.isArray(evalList.body.items)).toBe(true);
+    });
+
+    it('handles PDF artifact presign + complete flow', async () => {
+      const owner = 'sub_owner4';
+      const student = 'sub_student4';
+      db.users.set(owner, { id: owner, email: 'sub_owner4@example.com' });
+      db.users.set(student, { id: student, email: 'sub_student4@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Sub 104', createdById: owner } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: owner, courseId: course.id } }, create: { userId: owner, courseId: course.id, role: 'OWNER' }, update: { role: 'OWNER' } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: student, courseId: course.id } }, create: { userId: student, courseId: course.id, role: 'STUDENT' }, update: { role: 'STUDENT' } });
+      const assignment = await prismaMock.assignment.create({
+        data: { courseId: course.id, title: 'HW', totalPoints: 10, sourceTex: 'x', createdById: owner, status: 'PUBLISHED', publishedAt: new Date() },
+      });
+      const submission = await prismaMock.submission.create({ data: { assignmentId: assignment.id, courseId: course.id, userId: student, number: 1, status: 'UPLOADING' } });
+
+      const presign = await request(app)
+        .post(`/v1/submissions/${submission.id}/artifacts/pdf/presign`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ contentType: 'application/pdf' });
+      expect(presign.status).toBe(201);
+      expect(presign.body.artifactId).toBeTruthy();
+
+      const complete = await request(app)
+        .post(`/v1/artifacts/${presign.body.artifactId}/complete`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ sha256: 'abc123', sizeBytes: 123 });
+      expect(complete.status).toBe(200);
+      expect(complete.body.artifact?.sha256).toBe('abc123');
     });
   });
 });
