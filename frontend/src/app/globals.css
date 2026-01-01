@@ -94,3 +94,48 @@
     @apply bg-background text-foreground;
   }
 }
+
+.privacy-markdown h1 {
+  font-size: 1.75rem;
+  line-height: 2.25rem;
+  font-weight: 700;
+  margin-top: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.privacy-markdown h2 {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.privacy-markdown h3 {
+  font-size: 1.1rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.privacy-markdown p {
+  margin-bottom: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.privacy-markdown ul {
+  padding-left: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.privacy-markdown li {
+  list-style: disc;
+  margin-bottom: 0.35rem;
+  color: var(--muted-foreground);
+}
+
+.privacy-markdown a {
+  color: var(--primary);
+  text-decoration: underline;
+}
