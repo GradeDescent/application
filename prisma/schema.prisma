@@ -7,7 +7,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -15,6 +14,12 @@ enum Role {
   INSTRUCTOR
   TA
   STUDENT
+}
+
+enum AssignmentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
 }
 
 model User {
@@ -33,6 +38,7 @@ model User {
   createdCourses  Course[]           @relation("CourseOwner")
   serviceTokens   ServiceToken[]
   idempotencyKeys IdempotencyKey[]
+  createdAssignments Assignment[]
 }
 
 model OAuthAccount {
@@ -59,6 +65,7 @@ model Course {
   owner       User     @relation("CourseOwner", fields: [createdById], references: [id])
 
   memberships CourseMembership[]
+  assignments Assignment[]
 }
 
 model CourseMembership {
@@ -113,4 +120,24 @@ model ServiceToken {
   lastUsedAt  DateTime?
 
   createdBy User @relation(fields: [createdById], references: [id])
+}
+
+model Assignment {
+  id          String           @id @default(cuid())
+  courseId    String
+  title       String
+  dueAt       DateTime?
+  totalPoints Int
+  sourceTex   String
+  status      AssignmentStatus @default(DRAFT)
+  createdById String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  publishedAt DateTime?
+
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdBy User  @relation(fields: [createdById], references: [id])
+
+  @@index([courseId, status])
+  @@index([courseId])
 }

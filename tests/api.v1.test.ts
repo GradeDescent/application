@@ -3,11 +3,26 @@ import { vi, beforeAll, afterEach, describe, expect, it } from 'vitest';
 
 // Set env for JWT
 process.env.JWT_SECRET = 'test-secret';
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/gradedescent_test';
 
 // In-memory fakes for Prisma models we touch
 type User = { id: string; email: string; name?: string | null; passwordHash?: string | null };
 type Course = { id: string; title: string; code?: string | null; description?: string | null; createdById: string };
 type CourseMembership = { id: string; userId: string; courseId: string; role: 'OWNER' | 'INSTRUCTOR' | 'TA' | 'STUDENT'; createdAt?: Date };
+type AssignmentStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+type Assignment = {
+  id: string;
+  courseId: string;
+  title: string;
+  dueAt?: Date | null;
+  totalPoints: number;
+  sourceTex: string;
+  status: AssignmentStatus;
+  createdById: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+  publishedAt?: Date | null;
+};
 type IdempotencyKey = { key: string; userId?: string | null; method: string; path: string; statusCode?: number | null; responseBody?: any; lockedAt?: Date | null };
 type MagicLinkToken = { id: string; userId?: string | null; email: string; token: string; expiresAt: Date; consumedAt?: Date | null; createdAt?: Date };
 
@@ -16,6 +31,7 @@ const db = {
   usersByEmail: new Map<string, string>(),
   courses: new Map<string, Course>(),
   memberships: new Map<string, CourseMembership>(),
+  assignments: new Map<string, Assignment>(),
   idempotency: new Map<string, IdempotencyKey>(),
   magicTokens: new Map<string, MagicLinkToken>(),
 };
@@ -122,6 +138,60 @@ const prismaMock = {
       return { deleted: true } as any;
     }),
   },
+  assignment: {
+    create: vi.fn(async ({ data }: any) => {
+      const id = cuid();
+      const now = new Date();
+      const row: Assignment = {
+        id,
+        courseId: data.courseId,
+        title: data.title,
+        dueAt: data.dueAt ?? null,
+        totalPoints: data.totalPoints,
+        sourceTex: data.sourceTex,
+        status: data.status ?? 'DRAFT',
+        createdById: data.createdById,
+        createdAt: now,
+        updatedAt: now,
+        publishedAt: data.publishedAt ?? null,
+      };
+      db.assignments.set(id, row);
+      return row;
+    }),
+    findMany: vi.fn(async ({ where, take, cursor, orderBy }: any) => {
+      let arr = Array.from(db.assignments.values()).filter((a) => a.courseId === where.courseId);
+      if (where.status) {
+        if (typeof where.status === 'string') {
+          arr = arr.filter((a) => a.status === where.status);
+        } else if (where.status?.not) {
+          arr = arr.filter((a) => a.status !== where.status.not);
+        }
+      }
+      if (orderBy?.id) {
+        arr.sort((a, b) => (a.id < b.id ? -1 : 1));
+      }
+      let start = 0;
+      if (cursor) {
+        const idx = arr.findIndex((a) => a.id === cursor.id);
+        start = idx >= 0 ? idx + 1 : 0;
+      }
+      const page = typeof take === 'number' ? arr.slice(start, start + take) : arr;
+      return page;
+    }),
+    findFirst: vi.fn(async ({ where }: any) => {
+      const row = db.assignments.get(where.id);
+      if (!row) return null;
+      if (where.courseId && row.courseId !== where.courseId) return null;
+      return row;
+    }),
+    update: vi.fn(async ({ where, data }: any) => {
+      const row = db.assignments.get(where.id);
+      if (!row) throw new Error('not found');
+      const updated = { ...row, ...data, updatedAt: new Date() } as Assignment;
+      db.assignments.set(where.id, updated);
+      return updated;
+    }),
+  },
   idempotencyKey: {
     findUnique: vi.fn(async ({ where }: any) => db.idempotency.get(where.key) || null),
     create: vi.fn(async ({ data }: any) => {
@@ -172,6 +242,7 @@ beforeAll(async () => {
   p.user = prismaMock.user;
   p.course = prismaMock.course;
   p.courseMembership = prismaMock.courseMembership;
+  p.assignment = prismaMock.assignment;
   p.idempotencyKey = prismaMock.idempotencyKey;
   p.serviceToken = prismaMock.serviceToken;
   p.magicLinkToken = prismaMock.magicLinkToken;
@@ -414,6 +485,108 @@ describe('API v1', () => {
         .set('Authorization', `Bearer valid.${owner}`);
       expect(delRes.status).toBe(200);
       expect(delRes.body.deleted).toBe(true);
+    });
+  });
+
+  describe('Assignments', () => {
+    it('staff can create assignments; students cannot', async () => {
+      const owner = 'assign_owner';
+      const student = 'assign_student';
+      db.users.set(owner, { id: owner, email: 'assign_owner@example.com' });
+      db.users.set(student, { id: student, email: 'assign_student@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Assign 101', createdById: owner } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: owner, courseId: course.id } }, create: { userId: owner, courseId: course.id, role: 'OWNER' }, update: { role: 'OWNER' } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: student, courseId: course.id } }, create: { userId: student, courseId: course.id, role: 'STUDENT' }, update: { role: 'STUDENT' } });
+
+      const createRes = await request(app)
+        .post(`/v1/courses/${course.id}/assignments`)
+        .set('Authorization', `Bearer valid.${owner}`)
+        .set('Content-Type', 'application/json')
+        .send({ title: 'HW1', totalPoints: 10, sourceTex: '\\n' });
+      expect(createRes.status).toBe(201);
+      expect(createRes.body.assignment?.status).toBe('DRAFT');
+
+      const forbidden = await request(app)
+        .post(`/v1/courses/${course.id}/assignments`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ title: 'HW1', totalPoints: 10, sourceTex: 'x' });
+      expect(forbidden.status).toBe(403);
+    });
+
+    it('lists and fetches assignments with role-based visibility', async () => {
+      const owner = 'assign_owner2';
+      const student = 'assign_student2';
+      db.users.set(owner, { id: owner, email: 'assign_owner2@example.com' });
+      db.users.set(student, { id: student, email: 'assign_student2@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Assign 102', createdById: owner } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: owner, courseId: course.id } }, create: { userId: owner, courseId: course.id, role: 'OWNER' }, update: { role: 'OWNER' } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: student, courseId: course.id } }, create: { userId: student, courseId: course.id, role: 'STUDENT' }, update: { role: 'STUDENT' } });
+
+      const draft = await prismaMock.assignment.create({ data: { courseId: course.id, title: 'Draft', totalPoints: 5, sourceTex: 'x', createdById: owner, status: 'DRAFT' } });
+      const published = await prismaMock.assignment.create({ data: { courseId: course.id, title: 'Published', totalPoints: 10, sourceTex: 'y', createdById: owner, status: 'PUBLISHED', publishedAt: new Date() } });
+      await prismaMock.assignment.create({ data: { courseId: course.id, title: 'Archived', totalPoints: 10, sourceTex: 'z', createdById: owner, status: 'ARCHIVED' } });
+
+      const staffList = await request(app).get(`/v1/courses/${course.id}/assignments`).set('Authorization', `Bearer valid.${owner}`);
+      expect(staffList.status).toBe(200);
+      expect(staffList.body.items?.some((a: Assignment) => a.status === 'ARCHIVED')).toBe(false);
+
+      const studentList = await request(app).get(`/v1/courses/${course.id}/assignments`).set('Authorization', `Bearer valid.${student}`);
+      expect(studentList.status).toBe(200);
+      expect(studentList.body.items?.length).toBe(1);
+      expect(studentList.body.items?.[0].id).toBe(published.id);
+
+      const studentDraft = await request(app)
+        .get(`/v1/courses/${course.id}/assignments/${draft.id}`)
+        .set('Authorization', `Bearer valid.${student}`);
+      expect(studentDraft.status).toBe(403);
+
+      const studentPublished = await request(app)
+        .get(`/v1/courses/${course.id}/assignments/${published.id}`)
+        .set('Authorization', `Bearer valid.${student}`);
+      expect(studentPublished.status).toBe(200);
+
+      const studentStatusForbidden = await request(app)
+        .get(`/v1/courses/${course.id}/assignments?status=DRAFT`)
+        .set('Authorization', `Bearer valid.${student}`);
+      expect(studentStatusForbidden.status).toBe(403);
+    });
+
+    it('publishes, unpublishes, and archives assignments', async () => {
+      const owner = 'assign_owner3';
+      db.users.set(owner, { id: owner, email: 'assign_owner3@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Assign 103', createdById: owner } });
+      await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: owner, courseId: course.id } }, create: { userId: owner, courseId: course.id, role: 'OWNER' }, update: { role: 'OWNER' } });
+
+      const draft = await prismaMock.assignment.create({ data: { courseId: course.id, title: 'HW2', totalPoints: 20, sourceTex: 'a', createdById: owner, status: 'DRAFT' } });
+
+      const publish = await request(app)
+        .post(`/v1/courses/${course.id}/assignments/${draft.id}/publish`)
+        .set('Authorization', `Bearer valid.${owner}`)
+        .set('Content-Type', 'application/json');
+      expect(publish.status).toBe(200);
+      expect(publish.body.assignment?.status).toBe('PUBLISHED');
+      expect(publish.body.assignment?.publishedAt).toBeTruthy();
+
+      const unpublish = await request(app)
+        .post(`/v1/courses/${course.id}/assignments/${draft.id}/unpublish`)
+        .set('Authorization', `Bearer valid.${owner}`)
+        .set('Content-Type', 'application/json');
+      expect(unpublish.status).toBe(200);
+      expect(unpublish.body.assignment?.status).toBe('DRAFT');
+      expect(unpublish.body.assignment?.publishedAt).toBe(null);
+
+      const archive = await request(app)
+        .delete(`/v1/courses/${course.id}/assignments/${draft.id}`)
+        .set('Authorization', `Bearer valid.${owner}`);
+      expect(archive.status).toBe(200);
+      expect(archive.body.assignment?.status).toBe('ARCHIVED');
+
+      const publishArchived = await request(app)
+        .post(`/v1/courses/${course.id}/assignments/${draft.id}/publish`)
+        .set('Authorization', `Bearer valid.${owner}`)
+        .set('Content-Type', 'application/json');
+      expect(publishArchived.status).toBe(409);
     });
   });
 
