@@ -18,6 +18,8 @@ export default function CoursesPage() {
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [joinCode, setJoinCode] = useState('');
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -43,6 +45,23 @@ export default function CoursesPage() {
     },
   });
 
+  const joinMutation = useMutation({
+    mutationFn: async () => {
+      await apiFetch<{ membership: { id: string } }>('/memberships/join', {
+        method: 'POST',
+        body: JSON.stringify({ courseCode: joinCode }),
+      });
+    },
+    onSuccess: () => {
+      setJoinCode('');
+      setJoinError(null);
+      queryClient.invalidateQueries({ queryKey: ['courses'] });
+    },
+    onError: (err) => {
+      setJoinError(err instanceof ApiError ? err.message : 'Failed to join course.');
+    },
+  });
+
   return (
     <AuthGuard>
       <div className="min-h-screen bg-[linear-gradient(135deg,_rgba(66,129,164,0.12),transparent_40%),linear-gradient(225deg,_rgba(212,180,131,0.16),transparent_40%)]">
@@ -61,27 +80,66 @@ export default function CoursesPage() {
                   createMutation.mutate();
                 }}
               >
-                <Input
-                  placeholder="Course title"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  required
-                />
-                <Input
-                  placeholder="Code (optional)"
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
-                />
-                <Input
-                  placeholder="Description (optional)"
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                />
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Title</label>
+                  <Input
+                    placeholder="Course title"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Course code</label>
+                  <Input
+                    placeholder="Code (optional)"
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Description</label>
+                  <textarea
+                    className="min-h-[96px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="Description (optional)"
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                  />
+                </div>
                 <Button type="submit" disabled={createMutation.isPending || !title.trim()}>
                   Create
                 </Button>
               </form>
               {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
+            </CardContent>
+          </Card>
+
+          <Card className="border-none bg-card/90 shadow-lg">
+            <CardHeader>
+              <CardTitle>Join a course</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Your instructor should have provided a course code. Enter it here to join as a student.
+              </p>
+              <form
+                className="flex flex-col gap-3 md:flex-row"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  joinMutation.mutate();
+                }}
+              >
+                <Input
+                  placeholder="Course code"
+                  value={joinCode}
+                  onChange={(event) => setJoinCode(event.target.value)}
+                  required
+                />
+                <Button type="submit" disabled={joinMutation.isPending || !joinCode.trim()}>
+                  Join
+                </Button>
+              </form>
+              {joinError ? <p className="mt-2 text-sm text-destructive">{joinError}</p> : null}
             </CardContent>
           </Card>
 
