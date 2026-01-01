@@ -133,6 +133,10 @@ const prismaMock = {
       }
       return c;
     }),
+    findFirst: vi.fn(async ({ where }: any) => {
+      if (!where?.code) return null;
+      return Array.from(db.courses.values()).find((course) => course.code === where.code) || null;
+    }),
     findUnique: vi.fn(async ({ where }: any) => {
       if (!where?.id) return null;
       return db.courses.get(where.id) || null;
@@ -587,6 +591,26 @@ describe('API v1', () => {
         .send({ title: 'Intro to Testing', code: 'TEST101' });
       expect(res.status).toBe(201);
       expect(res.body.course?.title).toBe('Intro to Testing');
+    });
+
+    it('POST /v1/courses rejects duplicate course codes', async () => {
+      const uid = 'creator2';
+      db.users.set(uid, { id: uid, email: 'creator2@example.com' });
+
+      const first = await request(app)
+        .post('/v1/courses')
+        .set('Authorization', `Bearer valid.${uid}`)
+        .set('Content-Type', 'application/json')
+        .send({ title: 'Course A', code: 'CODE1' });
+      expect(first.status).toBe(201);
+
+      const second = await request(app)
+        .post('/v1/courses')
+        .set('Authorization', `Bearer valid.${uid}`)
+        .set('Content-Type', 'application/json')
+        .send({ title: 'Course B', code: 'CODE1' });
+      expect(second.status).toBe(409);
+      expect(second.body.error?.type).toBe('conflict');
     });
 
     it('GET /v1/courses lists user courses with pagination', async () => {

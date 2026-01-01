@@ -17,6 +17,12 @@ const createCourseSchema = z.object({
 coursesRouter.post('/', authRequired, async (req, res, next) => {
   try {
     const body = createCourseSchema.parse(req.body);
+    if (body.code) {
+      const existing = await prisma.course.findFirst({ where: { code: body.code } });
+      if (existing) {
+        return res.status(409).json({ error: { type: 'conflict', message: 'Course code already in use' } });
+      }
+    }
     const course = await prisma.course.create({
       data: {
         title: body.title,
@@ -65,4 +71,3 @@ coursesRouter.get('/:courseId', authRequired, requireCourseRole('courseId', ['OW
     next(err);
   }
 });
-
