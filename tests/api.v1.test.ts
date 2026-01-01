@@ -591,6 +591,7 @@ describe('API v1', () => {
         .send({ title: 'Intro to Testing', code: 'TEST101' });
       expect(res.status).toBe(201);
       expect(res.body.course?.title).toBe('Intro to Testing');
+      expect(res.body.course?.code).toBe('test101');
     });
 
     it('POST /v1/courses rejects duplicate course codes', async () => {
@@ -611,6 +612,20 @@ describe('API v1', () => {
         .send({ title: 'Course B', code: 'CODE1' });
       expect(second.status).toBe(409);
       expect(second.body.error?.type).toBe('conflict');
+    });
+
+    it('POST /v1/courses generates a course code when omitted', async () => {
+      const uid = 'creator3';
+      db.users.set(uid, { id: uid, email: 'creator3@example.com' });
+
+      const res = await request(app)
+        .post('/v1/courses')
+        .set('Authorization', `Bearer valid.${uid}`)
+        .set('Content-Type', 'application/json')
+        .send({ title: 'No Code Course' });
+      expect(res.status).toBe(201);
+      expect(typeof res.body.course?.code).toBe('string');
+      expect(res.body.course?.code?.length).toBeGreaterThan(0);
     });
 
     it('GET /v1/courses lists user courses with pagination', async () => {
