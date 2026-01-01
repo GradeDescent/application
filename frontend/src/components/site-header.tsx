@@ -27,7 +27,7 @@ export function SiteHeader({
             </Link>
             <div>
               <p className="text-lg font-semibold">
-                <Link href="/courses" className="hover:text-foreground/80">
+                <Link href="/courses" className="text-[#c1666b] hover:text-[#c1666b]/80">
                   GradeDescent
                 </Link>
               </p>
