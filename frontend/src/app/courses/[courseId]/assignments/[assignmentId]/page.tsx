@@ -7,6 +7,7 @@ import { SubmissionWidget } from '@/components/submission-widget';
 import { SiteHeader } from '@/components/site-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAssignment } from '@/lib/queries';
+import { PageShell } from '@/components/page-shell';
 
 export default function AssignmentDetailPage() {
   const params = useParams<{ courseId: string; assignmentId: string }>();
@@ -16,10 +17,10 @@ export default function AssignmentDetailPage() {
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-[linear-gradient(120deg,_rgba(212,180,131,0.2),transparent_50%),linear-gradient(240deg,_rgba(72,169,166,0.12),transparent_45%)]">
+      <PageShell className="bg-[linear-gradient(120deg,_rgba(212,180,131,0.2),transparent_50%),linear-gradient(240deg,_rgba(72,169,166,0.12),transparent_45%)]">
         <SiteHeader title="Assignment" subtitle={`Course ${courseId}`} />
 
-        <main className="mx-auto grid max-w-5xl gap-6 px-6 py-8 lg:grid-cols-[2fr_1fr]">
+        <main className="mx-auto grid max-w-5xl flex-1 gap-6 px-6 py-8 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-4">
             {assignmentQuery.isLoading ? (
               <Card>
@@ -56,7 +57,7 @@ export default function AssignmentDetailPage() {
           </div>
           {assignmentQuery.data ? <SubmissionWidget assignmentId={assignmentId} /> : null}
         </main>
-      </div>
+      </PageShell>
     </AuthGuard>
   );
 }

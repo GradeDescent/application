@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { SiteHeader } from '@/components/site-header';
 import { apiFetch, ApiError } from '@/lib/apiClient';
 import { useCourses } from '@/lib/queries';
+import { PageShell } from '@/components/page-shell';
 
 export default function CoursesPage() {
   const queryClient = useQueryClient();
@@ -64,10 +65,10 @@ export default function CoursesPage() {
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-[linear-gradient(135deg,_rgba(66,129,164,0.12),transparent_40%),linear-gradient(225deg,_rgba(212,180,131,0.16),transparent_40%)]">
+      <PageShell className="bg-[linear-gradient(135deg,_rgba(66,129,164,0.12),transparent_40%),linear-gradient(225deg,_rgba(212,180,131,0.16),transparent_40%)]">
         <SiteHeader title="Courses" subtitle="Your teaching and learning spaces" />
 
-        <main className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
+        <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-6 px-6 py-8">
           <Card className="border-none bg-card/90 shadow-lg">
             <CardHeader>
               <CardTitle>Create a course</CardTitle>
@@ -181,7 +182,7 @@ export default function CoursesPage() {
             )}
           </div>
         </main>
-      </div>
+      </PageShell>
     </AuthGuard>
   );
 }

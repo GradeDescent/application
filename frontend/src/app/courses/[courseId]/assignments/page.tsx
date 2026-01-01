@@ -11,6 +11,7 @@ import { apiFetch, ApiError } from '@/lib/apiClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAssignments } from '@/lib/queries';
+import { PageShell } from '@/components/page-shell';
 
 export default function AssignmentsPage() {
   const params = useParams<{ courseId: string }>();
@@ -66,9 +67,9 @@ export default function AssignmentsPage() {
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-[linear-gradient(120deg,_rgba(72,169,166,0.12),transparent_45%),linear-gradient(240deg,_rgba(66,129,164,0.1),transparent_45%)]">
+      <PageShell className="bg-[linear-gradient(120deg,_rgba(72,169,166,0.12),transparent_45%),linear-gradient(240deg,_rgba(66,129,164,0.1),transparent_45%)]">
         <SiteHeader title="Assignments" subtitle={`Course ${courseId}`} />
-        <main className="mx-auto max-w-5xl px-6 py-8">
+        <main className="mx-auto max-w-5xl flex-1 px-6 py-8">
           <Card className="mb-6 border-none bg-card/90 shadow">
             <CardHeader>
               <CardTitle>Create assignment</CardTitle>
@@ -193,7 +194,7 @@ export default function AssignmentsPage() {
             )}
           </div>
         </main>
-      </div>
+      </PageShell>
     </AuthGuard>
   );
 }

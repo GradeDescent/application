@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
+import { PageShell } from '@/components/page-shell';
 
 export default function Home() {
   const { user, isLoading } = useAuth();
@@ -17,8 +18,8 @@ export default function Home() {
   if (isLoading || user) return null;
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(66,129,164,0.25),transparent_55%),radial-gradient(circle_at_bottom,_rgba(212,180,131,0.2),transparent_60%)]">
-      <main className="mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center gap-8 px-6 py-16 text-center">
+    <PageShell className="bg-[radial-gradient(circle_at_top,_rgba(66,129,164,0.25),transparent_55%),radial-gradient(circle_at_bottom,_rgba(212,180,131,0.2),transparent_60%)]">
+      <main className="mx-auto flex max-w-5xl flex-1 flex-col items-center justify-center gap-8 px-6 py-16 text-center">
         <img src="/logo.svg" alt="GradeDescent" className="h-28 w-28" />
         <div className="max-w-2xl space-y-4">
           <h1 className="text-4xl font-semibold tracking-tight">GradeDescent</h1>
@@ -39,6 +40,6 @@ export default function Home() {
           </Button>
         </div>
       </main>
-    </div>
+    </PageShell>
   );
 }

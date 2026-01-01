@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiFetch, ApiError } from '@/lib/apiClient';
 import { useAuth } from '@/lib/auth';
 import { useCourse } from '@/lib/queries';
+import { PageShell } from '@/components/page-shell';
 
 export default function CourseDetailPage() {
   const params = useParams<{ courseId: string }>();
@@ -51,9 +52,9 @@ export default function CourseDetailPage() {
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-[linear-gradient(120deg,_rgba(72,169,166,0.12),transparent_45%),linear-gradient(240deg,_rgba(66,129,164,0.1),transparent_45%)]">
+      <PageShell className="bg-[linear-gradient(120deg,_rgba(72,169,166,0.12),transparent_45%),linear-gradient(240deg,_rgba(66,129,164,0.1),transparent_45%)]">
         <SiteHeader title="Course" subtitle={`Course ${courseId}`} />
-        <main className="mx-auto max-w-5xl px-6 py-8 space-y-6">
+        <main className="mx-auto max-w-5xl flex-1 px-6 py-8 space-y-6">
           <Card className="border-none bg-card/90 shadow">
             <CardHeader className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
@@ -116,7 +117,7 @@ export default function CourseDetailPage() {
             </Card>
           )}
         </main>
-      </div>
+      </PageShell>
     </AuthGuard>
   );
 }

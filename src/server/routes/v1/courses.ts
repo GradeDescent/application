@@ -5,7 +5,7 @@ import { authRequired } from '../../security/authMiddleware.js';
 import { jsonOk } from '../../../utils/responses.js';
 import { parsePagination } from '../../support/pagination.js';
 import { requireCourseRole } from '../../security/rbac.js';
-import { generateUniqueCourseCode, normalizeCourseCode } from '../../support/courseCodes.js';
+import { generateUniqueCourseCode, isUrlSafeCourseCode, normalizeCourseCode } from '../../support/courseCodes.js';
 
 export const coursesRouter = Router();
 
@@ -24,6 +24,9 @@ coursesRouter.post('/', authRequired, async (req, res, next) => {
   try {
     const body = createCourseSchema.parse(req.body);
     const desiredCode = body.code ? normalizeCourseCode(body.code) : undefined;
+    if (desiredCode && !isUrlSafeCourseCode(desiredCode)) {
+      return res.status(400).json({ error: { type: 'validation_error', message: 'Course code must be URL-safe' } });
+    }
     const code = desiredCode
       ? desiredCode
       : await generateUniqueCourseCode(async (candidate) => {

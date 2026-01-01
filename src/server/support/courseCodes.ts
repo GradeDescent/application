@@ -50,6 +50,10 @@ function pick<T>(list: T[]) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+export function isUrlSafeCourseCode(code: string) {
+  return /^[a-z0-9-]+$/.test(code);
+}
+
 export function normalizeCourseCode(code: string) {
   return code.trim().toLowerCase();
 }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../../services/prisma.js';
 import { authRequired } from '../../security/authMiddleware.js';
 import { requireCourseRole } from '../../security/rbac.js';
+import { isUrlSafeCourseCode, normalizeCourseCode } from '../../support/courseCodes.js';
 import { jsonOk } from '../../../utils/responses.js';
 
 export const membershipsRouter = Router();
@@ -31,13 +32,38 @@ membershipsRouter.post('/:courseId/members', authRequired, async (req, res, next
     const body = joinCourseSchema.parse(req.body);
     const course = await prisma.course.findUnique({ where: { id: req.params.courseId } });
     if (!course) return res.status(404).json({ error: { type: 'not_found', message: 'Course not found' } });
-    if (course.code !== body.courseCode.trim().toLowerCase()) {
+    const normalized = normalizeCourseCode(body.courseCode);
+    if (!isUrlSafeCourseCode(normalized)) {
+      return res.status(400).json({ error: { type: 'validation_error', message: 'Course code must be URL-safe' } });
+    }
+    if (course.code !== normalized) {
       return res.status(403).json({ error: { type: 'forbidden', message: 'Invalid course code' } });
     }
 
     const membership = await prisma.courseMembership.upsert({
       where: { userId_courseId: { userId: req.auth!.user.id, courseId: req.params.courseId } },
       create: { userId: req.auth!.user.id, courseId: req.params.courseId, role: 'STUDENT' },
+      update: { role: 'STUDENT' },
+    });
+    return jsonOk(res, { membership }, 201);
+  } catch (err) {
+    next(err);
+  }
+});
+
+membershipsRouter.post('/join', authRequired, async (req, res, next) => {
+  try {
+    const body = joinCourseSchema.parse(req.body);
+    const normalized = normalizeCourseCode(body.courseCode);
+    if (!isUrlSafeCourseCode(normalized)) {
+      return res.status(400).json({ error: { type: 'validation_error', message: 'Course code must be URL-safe' } });
+    }
+    const course = await prisma.course.findFirst({ where: { code: normalized } });
+    if (!course) return res.status(404).json({ error: { type: 'not_found', message: 'Course not found' } });
+
+    const membership = await prisma.courseMembership.upsert({
+      where: { userId_courseId: { userId: req.auth!.user.id, courseId: course.id } },
+      create: { userId: req.auth!.user.id, courseId: course.id, role: 'STUDENT' },
       update: { role: 'STUDENT' },
     });
     return jsonOk(res, { membership }, 201);

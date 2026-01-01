@@ -98,6 +98,8 @@ model Course {
   memberships CourseMembership[]
   assignments Assignment[]
   submissions Submission[]
+
+  @@index([code])
 }
 
 model CourseMembership {

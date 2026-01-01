@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth';
 import { ApiError } from '@/lib/apiClient';
+import { PageShell } from '@/components/page-shell';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,11 +38,12 @@ export default function LoginPage() {
   }, [router, user]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(66,129,164,0.25),transparent_55%),radial-gradient(circle_at_bottom,_rgba(72,169,166,0.18),transparent_60%)] p-6">
-      <Card className="w-full max-w-md border-none bg-card/95 shadow-xl">
+    <PageShell className="bg-[radial-gradient(circle_at_top,_rgba(66,129,164,0.25),transparent_55%),radial-gradient(circle_at_bottom,_rgba(72,169,166,0.18),transparent_60%)]">
+      <div className="flex flex-1 items-center justify-center p-6">
+        <Card className="w-full max-w-md border-none bg-card/95 shadow-xl">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <img src="/logo.svg" alt="GradeDescent" className="h-10 w-10" />
+            <img src="/icon.svg" alt="GradeDescent" className="h-10 w-10" />
             <div>
               <CardTitle>Welcome back</CardTitle>
               <CardDescription>Sign in to your GradeDescent account.</CardDescription>
@@ -79,7 +81,8 @@ export default function LoginPage() {
             </Link>
           </p>
         </CardContent>
-      </Card>
-    </div>
+        </Card>
+      </div>
+    </PageShell>
   );
 }

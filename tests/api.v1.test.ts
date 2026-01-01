@@ -635,6 +635,19 @@ describe('API v1', () => {
       expect(res.body.course?.code?.length).toBeGreaterThan(0);
     });
 
+    it('POST /v1/courses rejects non-url-safe course codes', async () => {
+      const uid = 'creator4';
+      db.users.set(uid, { id: uid, email: 'creator4@example.com' });
+
+      const res = await request(app)
+        .post('/v1/courses')
+        .set('Authorization', `Bearer valid.${uid}`)
+        .set('Content-Type', 'application/json')
+        .send({ title: 'Bad Code Course', code: 'Bad Code!' });
+      expect(res.status).toBe(400);
+      expect(res.body.error?.type).toBe('validation_error');
+    });
+
     it('GET /v1/courses lists user courses with pagination', async () => {
       const uid = 'member1';
       db.users.set(uid, { id: uid, email: 'member1@example.com' });
@@ -764,6 +777,40 @@ describe('API v1', () => {
         .set('Content-Type', 'application/json')
         .send({ courseCode: 'wrong' });
       expect(badCode.status).toBe(403);
+    });
+
+    it('students can join by course code without course id', async () => {
+      const owner = 'owner-join2';
+      const student = 'student-join2';
+      db.users.set(owner, { id: owner, email: 'owner-join2@example.com' });
+      db.users.set(student, { id: student, email: 'student-join2@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Join 102', createdById: owner, code: 'join-102' } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: owner, courseId: course.id } },
+        create: { userId: owner, courseId: course.id, role: 'OWNER' },
+        update: { role: 'OWNER' },
+      });
+
+      const joinRes = await request(app)
+        .post('/v1/memberships/join')
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ courseCode: 'join-102' });
+      expect(joinRes.status).toBe(201);
+      expect(joinRes.body.membership?.role).toBe('STUDENT');
+    });
+
+    it('rejects non-url-safe course codes when joining', async () => {
+      const student = 'student-join3';
+      db.users.set(student, { id: student, email: 'student-join3@example.com' });
+
+      const res = await request(app)
+        .post('/v1/memberships/join')
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ courseCode: 'bad code!' });
+      expect(res.status).toBe(400);
+      expect(res.body.error?.type).toBe('validation_error');
     });
 
     it('instructors can only grant TA or STUDENT roles', async () => {
