@@ -66,7 +66,11 @@ export default function CoursesPage() {
   return (
     <AuthGuard>
       <PageShell className="bg-[linear-gradient(135deg,_rgba(66,129,164,0.12),transparent_40%),linear-gradient(225deg,_rgba(212,180,131,0.16),transparent_40%)]">
-        <SiteHeader title="Courses" subtitle="Your teaching and learning spaces" />
+        <SiteHeader
+          title="Courses"
+          subtitle="Your teaching and learning spaces"
+          breadcrumbs={[{ label: 'Courses', href: '/courses' }]}
+        />
 
         <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-6 px-6 py-8">
           <Card className="border-none bg-card/90 shadow-lg">

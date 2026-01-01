@@ -18,7 +18,11 @@ export default async function PrivacyPage() {
 
   return (
     <PageShell className="bg-[radial-gradient(circle_at_top,_rgba(72,169,166,0.1),transparent_55%)]">
-      <SiteHeader title="Privacy" subtitle="Privacy policy" />
+      <SiteHeader
+        title="Privacy"
+        subtitle="Privacy policy"
+        breadcrumbs={[{ label: 'Courses', href: '/courses' }, { label: 'Privacy' }]}
+      />
       <main className="mx-auto max-w-4xl flex-1 px-6 py-12">
         <article className="privacy-markdown max-w-none rounded-xl border bg-card/90 p-6 shadow">
           <ReactMarkdown>{markdown}</ReactMarkdown>

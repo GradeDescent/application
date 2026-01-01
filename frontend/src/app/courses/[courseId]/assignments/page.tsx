@@ -10,13 +10,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, ApiError } from '@/lib/apiClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useAssignments, useCourses } from '@/lib/queries';
+import { useAssignments, useCourse, useCourses } from '@/lib/queries';
 import { PageShell } from '@/components/page-shell';
 
 export default function AssignmentsPage() {
   const params = useParams<{ courseId: string }>();
   const courseId = Array.isArray(params.courseId) ? params.courseId[0] : params.courseId;
   const assignmentsQuery = useAssignments(courseId);
+  const courseQuery = useCourse(courseId);
   const coursesQuery = useCourses();
   const courseRole = coursesQuery.data?.items.find((course) => course.id === courseId)?.role;
   const canManage = courseRole && courseRole !== 'STUDENT';
@@ -71,7 +72,15 @@ export default function AssignmentsPage() {
   return (
     <AuthGuard>
       <PageShell className="bg-[linear-gradient(120deg,_rgba(72,169,166,0.12),transparent_45%),linear-gradient(240deg,_rgba(66,129,164,0.1),transparent_45%)]">
-        <SiteHeader title="Assignments" subtitle={`Course ${courseId}`} />
+        <SiteHeader
+          title="Assignments"
+          subtitle={`Course ${courseId}`}
+          breadcrumbs={[
+            { label: 'Courses', href: '/courses' },
+            { label: courseQuery.data?.title || 'Course', href: `/courses/${courseId}` },
+            { label: 'Assignments' },
+          ]}
+        />
         <main className="mx-auto max-w-5xl flex-1 px-6 py-8">
           {canManage ? (
             <Card className="mb-6 border-none bg-card/90 shadow">

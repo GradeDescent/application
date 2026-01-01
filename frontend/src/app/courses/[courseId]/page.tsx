@@ -53,7 +53,14 @@ export default function CourseDetailPage() {
   return (
     <AuthGuard>
       <PageShell className="bg-[linear-gradient(120deg,_rgba(72,169,166,0.12),transparent_45%),linear-gradient(240deg,_rgba(66,129,164,0.1),transparent_45%)]">
-        <SiteHeader title="Course" subtitle={`Course ${courseId}`} />
+        <SiteHeader
+          title="Course"
+          subtitle={`Course ${courseId}`}
+          breadcrumbs={[
+            { label: 'Courses', href: '/courses' },
+            { label: courseQuery.data?.title || 'Course' },
+          ]}
+        />
         <main className="mx-auto max-w-5xl flex-1 px-6 py-8 space-y-6">
           <Card className="border-none bg-card/90 shadow">
             <CardHeader className="flex flex-col gap-2">

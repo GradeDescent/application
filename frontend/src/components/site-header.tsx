@@ -4,7 +4,17 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth';
 
-export function SiteHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+type Crumb = { label: string; href?: string };
+
+export function SiteHeader({
+  title,
+  subtitle,
+  breadcrumbs,
+}: {
+  title: string;
+  subtitle?: string;
+  breadcrumbs?: Crumb[];
+}) {
   const { user, logout } = useAuth();
 
   return (
@@ -15,7 +25,24 @@ export function SiteHeader({ title, subtitle }: { title: string; subtitle?: stri
             <img src="/icon.svg" alt="GradeDescent" className="h-10 w-10" />
             <div>
               <p className="text-lg font-semibold">GradeDescent</p>
-              <p className="text-xs text-muted-foreground">{subtitle || title}</p>
+              {breadcrumbs && breadcrumbs.length ? (
+                <nav className="text-xs text-muted-foreground">
+                  {breadcrumbs.map((crumb, idx) => (
+                    <span key={`${crumb.label}-${idx}`}>
+                      {crumb.href ? (
+                        <Link className="underline underline-offset-2" href={crumb.href}>
+                          {crumb.label}
+                        </Link>
+                      ) : (
+                        <span>{crumb.label}</span>
+                      )}
+                      {idx < breadcrumbs.length - 1 ? <span className="mx-1">/</span> : null}
+                    </span>
+                  ))}
+                </nav>
+              ) : (
+                <p className="text-xs text-muted-foreground">{subtitle || title}</p>
+              )}
             </div>
           </Link>
         </div>
