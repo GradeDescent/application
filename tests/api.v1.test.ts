@@ -704,14 +704,6 @@ describe('API v1', () => {
       const course = await prismaMock.course.create({ data: { title: 'Manage 101', createdById: owner } });
       await prismaMock.courseMembership.upsert({ where: { userId_courseId: { userId: owner, courseId: course.id } }, create: { userId: owner, courseId: course.id, role: 'OWNER' }, update: { role: 'OWNER' } });
 
-      // Add member as OWNER
-      const addRes = await request(app)
-        .post(`/v1/memberships/${course.id}/members`)
-        .set('Authorization', `Bearer valid.${owner}`)
-        .set('Content-Type', 'application/json')
-        .send({ userId: student, role: 'STUDENT' });
-      expect(addRes.status).toBe(201);
-
       // Student cannot list members (needs TA+)
       const listForbidden = await request(app)
         .get(`/v1/memberships/${course.id}/members`)
@@ -725,7 +717,12 @@ describe('API v1', () => {
       expect(listOk.status).toBe(200);
       expect(Array.isArray(listOk.body.items)).toBe(true);
 
-      // Owner can promote
+      // Owner can promote (requires membership record)
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: student, courseId: course.id } },
+        create: { userId: student, courseId: course.id, role: 'STUDENT' },
+        update: { role: 'STUDENT' },
+      });
       const putRes = await request(app)
         .put(`/v1/memberships/${course.id}/members/${student}`)
         .set('Authorization', `Bearer valid.${owner}`)
@@ -739,6 +736,98 @@ describe('API v1', () => {
         .set('Authorization', `Bearer valid.${owner}`);
       expect(delRes.status).toBe(200);
       expect(delRes.body.deleted).toBe(true);
+    });
+
+    it('students can join with course code and only as STUDENT', async () => {
+      const owner = 'owner-join';
+      const student = 'student-join';
+      db.users.set(owner, { id: owner, email: 'owner-join@example.com' });
+      db.users.set(student, { id: student, email: 'student-join@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Join 101', createdById: owner, code: 'join-code' } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: owner, courseId: course.id } },
+        create: { userId: owner, courseId: course.id, role: 'OWNER' },
+        update: { role: 'OWNER' },
+      });
+
+      const joinRes = await request(app)
+        .post(`/v1/memberships/${course.id}/members`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ courseCode: 'join-code', role: 'TA' });
+      expect(joinRes.status).toBe(201);
+      expect(joinRes.body.membership?.role).toBe('STUDENT');
+
+      const badCode = await request(app)
+        .post(`/v1/memberships/${course.id}/members`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ courseCode: 'wrong' });
+      expect(badCode.status).toBe(403);
+    });
+
+    it('instructors can only grant TA or STUDENT roles', async () => {
+      const owner = 'owner-roles';
+      const instructor = 'inst-roles';
+      const target = 'student-roles';
+      db.users.set(owner, { id: owner, email: 'owner-roles@example.com' });
+      db.users.set(instructor, { id: instructor, email: 'inst-roles@example.com' });
+      db.users.set(target, { id: target, email: 'student-roles@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Roles 101', createdById: owner, code: 'roles-code' } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: owner, courseId: course.id } },
+        create: { userId: owner, courseId: course.id, role: 'OWNER' },
+        update: { role: 'OWNER' },
+      });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: instructor, courseId: course.id } },
+        create: { userId: instructor, courseId: course.id, role: 'INSTRUCTOR' },
+        update: { role: 'INSTRUCTOR' },
+      });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: target, courseId: course.id } },
+        create: { userId: target, courseId: course.id, role: 'STUDENT' },
+        update: { role: 'STUDENT' },
+      });
+
+      const promote = await request(app)
+        .put(`/v1/memberships/${course.id}/members/${target}`)
+        .set('Authorization', `Bearer valid.${instructor}`)
+        .set('Content-Type', 'application/json')
+        .send({ role: 'TA' });
+      expect(promote.status).toBe(200);
+
+      const blocked = await request(app)
+        .put(`/v1/memberships/${course.id}/members/${target}`)
+        .set('Authorization', `Bearer valid.${instructor}`)
+        .set('Content-Type', 'application/json')
+        .send({ role: 'INSTRUCTOR' });
+      expect(blocked.status).toBe(403);
+    });
+
+    it('owners cannot promote someone to OWNER via PUT', async () => {
+      const owner = 'owner-owner';
+      const target = 'target-owner';
+      db.users.set(owner, { id: owner, email: 'owner-owner@example.com' });
+      db.users.set(target, { id: target, email: 'target-owner@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Owner 101', createdById: owner, code: 'owner-code' } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: owner, courseId: course.id } },
+        create: { userId: owner, courseId: course.id, role: 'OWNER' },
+        update: { role: 'OWNER' },
+      });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: target, courseId: course.id } },
+        create: { userId: target, courseId: course.id, role: 'STUDENT' },
+        update: { role: 'STUDENT' },
+      });
+
+      const blocked = await request(app)
+        .put(`/v1/memberships/${course.id}/members/${target}`)
+        .set('Authorization', `Bearer valid.${owner}`)
+        .set('Content-Type', 'application/json')
+        .send({ role: 'OWNER' });
+      expect(blocked.status).toBe(403);
     });
   });
 
