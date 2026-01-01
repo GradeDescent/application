@@ -58,9 +58,14 @@ export default function CourseDetailPage() {
             <CardHeader className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <CardTitle>{courseQuery.data?.title || 'Course'}</CardTitle>
-                <Button asChild variant="outline">
-                  <Link href={`/courses/${courseId}/assignments`}>View assignments</Link>
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild variant="outline">
+                    <Link href={`/courses/${courseId}/assignments`}>View assignments</Link>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href={`/courses/${courseId}/students`}>View students</Link>
+                  </Button>
+                </div>
               </div>
               <p className="text-sm text-muted-foreground">Code: {courseQuery.data?.code || '—'}</p>
             </CardHeader>

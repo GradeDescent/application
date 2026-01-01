@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from './apiClient';
 import {
   assignmentSchema,
+  courseMemberSchema,
   courseSchema,
   evaluationSchema,
   submissionSchema,
@@ -35,6 +36,17 @@ export function useCourse(courseId?: string) {
     queryFn: async () => {
       const data = await apiFetch<{ course: Course }>(`/courses/${courseId}`);
       return courseSchema.parse(data.course);
+    },
+    enabled: !!courseId,
+  });
+}
+
+export function useCourseMembers(courseId?: string) {
+  return useQuery({
+    queryKey: ['course-members', courseId],
+    queryFn: async () => {
+      const data = await apiFetch<{ items: unknown[] }>(`/memberships/${courseId}/members`);
+      return data.items.map((item) => courseMemberSchema.parse(item));
     },
     enabled: !!courseId,
   });

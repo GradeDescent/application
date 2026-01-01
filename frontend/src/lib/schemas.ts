@@ -75,9 +75,25 @@ export const evaluationSchema = z.object({
   errorMessage: z.string().nullable().optional(),
 });
 
+export const courseMemberSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  courseId: z.string(),
+  role: z.enum(['OWNER', 'INSTRUCTOR', 'TA', 'STUDENT']),
+  createdAt: z.string().optional(),
+  user: z
+    .object({
+      id: z.string(),
+      email: z.string().email(),
+      name: z.string().nullable().optional(),
+    })
+    .optional(),
+});
+
 export type User = z.infer<typeof userSchema>;
 export type Course = z.infer<typeof courseSchema>;
 export type Assignment = z.infer<typeof assignmentSchema>;
 export type Submission = z.infer<typeof submissionSchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
 export type Evaluation = z.infer<typeof evaluationSchema>;
+export type CourseMember = z.infer<typeof courseMemberSchema>;
