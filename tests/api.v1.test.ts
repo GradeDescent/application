@@ -112,6 +112,58 @@ type UsageEvent = {
   meta?: any;
   createdAt?: Date;
 };
+type PipelineStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
+type PipelineStepStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED' | 'CANCELED';
+type PipelineRun = {
+  id: string;
+  pipeline: 'ASSIGNMENT_PROCESS' | 'SUBMISSION_PROCESS';
+  courseId: string;
+  accountId: string;
+  assignmentId?: string | null;
+  submissionId?: string | null;
+  evaluationId?: string | null;
+  status: PipelineStatus;
+  createdByUserId?: string | null;
+  createdByService?: string | null;
+  idempotencyKey?: string | null;
+  startedAt?: Date | null;
+  finishedAt?: Date | null;
+  errorMessage?: string | null;
+  meta?: any;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
+type PipelineStep = {
+  id: string;
+  runId: string;
+  name: string;
+  status: PipelineStepStatus;
+  runAt: Date;
+  priority: number;
+  attempt: number;
+  maxAttempts: number;
+  lockedBy?: string | null;
+  lockedUntil?: Date | null;
+  heartbeatAt?: Date | null;
+  startedAt?: Date | null;
+  finishedAt?: Date | null;
+  errorMessage?: string | null;
+  meta?: any;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
+type PipelineStepEvent = {
+  id: number;
+  stepId: string;
+  level: string;
+  message: string;
+  meta?: any;
+  createdAt?: Date;
+};
+type PipelineStepArtifact = { stepId: string; artifactId: string; direction: string };
+type AssignmentProblem = { id: string; assignmentId: string; problemIndex: number };
+type SubmissionProblem = { id: string; submissionId: string; problemIndex: number };
+type ProblemEvaluation = { id: string; evaluationId: string; submissionProblemId: string; assignmentProblemId?: string | null };
 
 const db = {
   users: new Map<string, User>(),
@@ -130,6 +182,13 @@ const db = {
   ledgerEntries: new Map<string, LedgerEntry>(),
   rateCards: new Map<string, RateCard>(),
   usageEvents: new Map<string, UsageEvent>(),
+  pipelineRuns: new Map<string, PipelineRun>(),
+  pipelineSteps: new Map<string, PipelineStep>(),
+  pipelineStepEvents: new Map<number, PipelineStepEvent>(),
+  pipelineStepArtifacts: new Map<string, PipelineStepArtifact>(),
+  assignmentProblems: new Map<string, AssignmentProblem>(),
+  submissionProblems: new Map<string, SubmissionProblem>(),
+  problemEvaluations: new Map<string, ProblemEvaluation>(),
 };
 
 let idSeq = 1;
@@ -690,6 +749,195 @@ const prismaMock = {
       return row;
     }),
   },
+  pipelineRun: {
+    create: vi.fn(async ({ data }: any) => {
+      const id = data.id ?? cuid();
+      const row: PipelineRun = {
+        id,
+        pipeline: data.pipeline,
+        courseId: data.courseId,
+        accountId: data.accountId,
+        assignmentId: data.assignmentId ?? null,
+        submissionId: data.submissionId ?? null,
+        evaluationId: data.evaluationId ?? null,
+        status: data.status,
+        createdByUserId: data.createdByUserId ?? null,
+        createdByService: data.createdByService ?? null,
+        idempotencyKey: data.idempotencyKey ?? null,
+        startedAt: data.startedAt ?? null,
+        finishedAt: data.finishedAt ?? null,
+        errorMessage: data.errorMessage ?? null,
+        meta: data.meta ?? {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      db.pipelineRuns.set(id, row);
+      return row;
+    }),
+    findUnique: vi.fn(async ({ where }: any) => db.pipelineRuns.get(where.id) || null),
+    findMany: vi.fn(async ({ where, orderBy }: any) => {
+      let items = Array.from(db.pipelineRuns.values());
+      if (where?.assignmentId) items = items.filter((row) => row.assignmentId === where.assignmentId);
+      if (where?.submissionId) items = items.filter((row) => row.submissionId === where.submissionId);
+      if (orderBy?.createdAt === 'desc') {
+        items.sort((a, b) => (a.createdAt! < b.createdAt! ? 1 : -1));
+      }
+      return items;
+    }),
+    update: vi.fn(async ({ where, data }: any) => {
+      const row = db.pipelineRuns.get(where.id);
+      if (!row) throw new Error('not found');
+      const updated = { ...row, ...data, updatedAt: new Date() } as PipelineRun;
+      db.pipelineRuns.set(where.id, updated);
+      return updated;
+    }),
+  },
+  pipelineStep: {
+    createMany: vi.fn(async ({ data }: any) => {
+      for (const row of data) {
+        const id = row.id ?? cuid();
+        db.pipelineSteps.set(id, {
+          id,
+          runId: row.runId,
+          name: row.name,
+          status: row.status,
+          runAt: row.runAt ?? new Date(),
+          priority: row.priority ?? 0,
+          attempt: row.attempt ?? 0,
+          maxAttempts: row.maxAttempts ?? 3,
+          meta: row.meta ?? {},
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+      return { count: data.length };
+    }),
+    create: vi.fn(async ({ data }: any) => {
+      const id = data.id ?? cuid();
+      const row: PipelineStep = {
+        id,
+        runId: data.runId,
+        name: data.name,
+        status: data.status,
+        runAt: data.runAt ?? new Date(),
+        priority: data.priority ?? 0,
+        attempt: data.attempt ?? 0,
+        maxAttempts: data.maxAttempts ?? 3,
+        meta: data.meta ?? {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      db.pipelineSteps.set(id, row);
+      return row;
+    }),
+    findUnique: vi.fn(async ({ where }: any) => db.pipelineSteps.get(where.id) || null),
+    findMany: vi.fn(async ({ where }: any) => {
+      let items = Array.from(db.pipelineSteps.values());
+      if (where?.runId) items = items.filter((row) => row.runId === where.runId);
+      return items;
+    }),
+    update: vi.fn(async ({ where, data }: any) => {
+      const row = db.pipelineSteps.get(where.id);
+      if (!row) throw new Error('not found');
+      const updated = { ...row, ...data, updatedAt: new Date() } as PipelineStep;
+      db.pipelineSteps.set(where.id, updated);
+      return updated;
+    }),
+    updateMany: vi.fn(async ({ where, data }: any) => {
+      const items = Array.from(db.pipelineSteps.values()).filter((row) => row.runId === where.runId);
+      for (const row of items) {
+        const updated = { ...row, ...data, updatedAt: new Date() } as PipelineStep;
+        db.pipelineSteps.set(row.id, updated);
+      }
+      return { count: items.length };
+    }),
+    upsert: vi.fn(async ({ where, create, update }: any) => {
+      const existing = db.pipelineSteps.get(where.id);
+      if (existing) {
+        const updated = { ...existing, ...update, updatedAt: new Date() } as PipelineStep;
+        db.pipelineSteps.set(where.id, updated);
+        return updated;
+      }
+      return prismaMock.pipelineStep.create({ data: create });
+    }),
+  },
+  pipelineStepEvent: {
+    findMany: vi.fn(async ({ where }: any) => {
+      return Array.from(db.pipelineStepEvents.values()).filter((row) => row.stepId === where.stepId);
+    }),
+  },
+  pipelineStepArtifact: {
+    create: vi.fn(async ({ data }: any) => {
+      const key = `${data.stepId}:${data.artifactId}:${data.direction}`;
+      const row: PipelineStepArtifact = { stepId: data.stepId, artifactId: data.artifactId, direction: data.direction };
+      db.pipelineStepArtifacts.set(key, row);
+      return row;
+    }),
+  },
+  assignmentProblem: {
+    upsert: vi.fn(async ({ where, create, update }: any) => {
+      const key = `${where.assignmentId_problemIndex.assignmentId}:${where.assignmentId_problemIndex.problemIndex}`;
+      const existing = db.assignmentProblems.get(key);
+      if (existing) {
+        const updated = { ...existing, ...update } as AssignmentProblem;
+        db.assignmentProblems.set(key, updated);
+        return updated;
+      }
+      const row: AssignmentProblem = {
+        id: create.id ?? cuid(),
+        assignmentId: create.assignmentId,
+        problemIndex: create.problemIndex,
+      };
+      db.assignmentProblems.set(key, row);
+      return row;
+    }),
+    count: vi.fn(async ({ where }: any) => {
+      return Array.from(db.assignmentProblems.values()).filter((row) => row.assignmentId === where.assignmentId).length;
+    }),
+  },
+  submissionProblem: {
+    upsert: vi.fn(async ({ where, create, update }: any) => {
+      const key = `${where.submissionId_problemIndex.submissionId}:${where.submissionId_problemIndex.problemIndex}`;
+      const existing = db.submissionProblems.get(key);
+      if (existing) {
+        const updated = { ...existing, ...update } as SubmissionProblem;
+        db.submissionProblems.set(key, updated);
+        return updated;
+      }
+      const row: SubmissionProblem = {
+        id: create.id ?? cuid(),
+        submissionId: create.submissionId,
+        problemIndex: create.problemIndex,
+      };
+      db.submissionProblems.set(key, row);
+      return row;
+    }),
+    findMany: vi.fn(async ({ where }: any) => {
+      return Array.from(db.submissionProblems.values()).filter((row) => row.submissionId === where.submissionId);
+    }),
+  },
+  problemEvaluation: {
+    upsert: vi.fn(async ({ where, create, update }: any) => {
+      const key = `${where.evaluationId_submissionProblemId.evaluationId}:${where.evaluationId_submissionProblemId.submissionProblemId}`;
+      const existing = db.problemEvaluations.get(key);
+      if (existing) {
+        const updated = { ...existing, ...update } as ProblemEvaluation;
+        db.problemEvaluations.set(key, updated);
+        return updated;
+      }
+      const row: ProblemEvaluation = {
+        id: create.id ?? cuid(),
+        evaluationId: create.evaluationId,
+        submissionProblemId: create.submissionProblemId,
+        assignmentProblemId: create.assignmentProblemId ?? null,
+      };
+      db.problemEvaluations.set(key, row);
+      return row;
+    }),
+    findMany: vi.fn(async ({ where }: any) => {
+      return Array.from(db.problemEvaluations.values()).filter((row) => row.evaluationId === where.evaluationId);
+    }),
+  },
   $transaction: vi.fn(async (input: any) => {
     if (typeof input === 'function') {
       return input(prismaMock);
@@ -725,6 +973,13 @@ beforeAll(async () => {
   p.ledgerEntry = prismaMock.ledgerEntry;
   p.rateCard = prismaMock.rateCard;
   p.usageEvent = prismaMock.usageEvent;
+  p.pipelineRun = prismaMock.pipelineRun;
+  p.pipelineStep = prismaMock.pipelineStep;
+  p.pipelineStepEvent = prismaMock.pipelineStepEvent;
+  p.pipelineStepArtifact = prismaMock.pipelineStepArtifact;
+  p.assignmentProblem = prismaMock.assignmentProblem;
+  p.submissionProblem = prismaMock.submissionProblem;
+  p.problemEvaluation = prismaMock.problemEvaluation;
   p.$transaction = prismaMock.$transaction;
 
   // Stub JWT verification used by authenticate middleware
@@ -1690,6 +1945,161 @@ describe('API v1', () => {
         .send({});
       expect(res.status).toBe(402);
       expect(res.body.error?.type).toBe('payment_required');
+    });
+  });
+
+  describe('Pipelines', () => {
+    it('creates assignment pipeline on assignment create', async () => {
+      const owner = 'pipe_owner';
+      db.users.set(owner, { id: owner, email: 'pipe_owner@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Pipe 101', createdById: owner } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: owner, courseId: course.id } },
+        create: { userId: owner, courseId: course.id, role: 'OWNER' },
+        update: { role: 'OWNER' },
+      });
+      const account = await prismaMock.account.upsert({
+        where: { type_ownerUserId: { type: 'USER', ownerUserId: owner } },
+        create: { type: 'USER', ownerUserId: owner, name: 'Owner' },
+        update: {},
+      });
+      await prismaMock.accountBalance.upsert({
+        where: { accountId: account.id },
+        create: { accountId: account.id, currency: 'USD', balanceMicrodollars: 10n },
+        update: {},
+      });
+      await prismaMock.courseBilling.create({ data: { courseId: course.id, accountId: account.id } });
+
+      const res = await request(app)
+        .post(`/v1/courses/${course.id}/assignments`)
+        .set('Authorization', `Bearer valid.${owner}`)
+        .set('Content-Type', 'application/json')
+        .send({ title: 'Pipe HW', totalPoints: 5, sourceTex: 'x' });
+      expect(res.status).toBe(201);
+      expect(db.pipelineRuns.size).toBeGreaterThan(0);
+    });
+
+    it('creates submission pipeline on submit', async () => {
+      const student = 'pipe_student';
+      db.users.set(student, { id: student, email: 'pipe_student@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Pipe 201', createdById: student } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: student, courseId: course.id } },
+        create: { userId: student, courseId: course.id, role: 'STUDENT' },
+        update: { role: 'STUDENT' },
+      });
+      const assignment = await prismaMock.assignment.create({
+        data: { courseId: course.id, title: 'HW', totalPoints: 10, sourceTex: 'x', createdById: student, status: 'PUBLISHED', publishedAt: new Date() },
+      });
+      const submission = await prismaMock.submission.create({
+        data: { assignmentId: assignment.id, courseId: course.id, userId: student, number: 1, status: 'UPLOADING' },
+      });
+      const artifact = await prismaMock.artifact.create({
+        data: { submissionId: submission.id, kind: 'TEX', origin: 'UPLOAD', storage: 'DB', texBody: 'x', contentType: 'text/plain' },
+      });
+      const account = await prismaMock.account.upsert({
+        where: { type_ownerUserId: { type: 'USER', ownerUserId: student } },
+        create: { type: 'USER', ownerUserId: student, name: 'Student' },
+        update: {},
+      });
+      await prismaMock.accountBalance.upsert({
+        where: { accountId: account.id },
+        create: { accountId: account.id, currency: 'USD', balanceMicrodollars: 10n },
+        update: {},
+      });
+      await prismaMock.courseBilling.create({ data: { courseId: course.id, accountId: account.id } });
+
+      const res = await request(app)
+        .post(`/v1/submissions/${submission.id}/submit`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ primaryArtifactId: artifact.id });
+      expect(res.status).toBe(200);
+      expect(db.pipelineRuns.size).toBeGreaterThan(0);
+    });
+
+    it('lists assignment pipelines for staff', async () => {
+      const owner = 'pipe_owner2';
+      db.users.set(owner, { id: owner, email: 'pipe_owner2@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Pipe 301', createdById: owner } });
+      const assignment = await prismaMock.assignment.create({ data: { courseId: course.id, title: 'HW', totalPoints: 1, sourceTex: 'x', createdById: owner, status: 'DRAFT' } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: owner, courseId: course.id } },
+        create: { userId: owner, courseId: course.id, role: 'OWNER' },
+        update: { role: 'OWNER' },
+      });
+      await prismaMock.pipelineRun.create({
+        data: {
+          pipeline: 'ASSIGNMENT_PROCESS',
+          courseId: course.id,
+          accountId: 'acct_1',
+          assignmentId: assignment.id,
+          status: 'QUEUED',
+        },
+      });
+
+      const res = await request(app)
+        .get(`/v1/assignments/${assignment.id}/pipelines`)
+        .set('Authorization', `Bearer valid.${owner}`);
+      expect(res.status).toBe(200);
+      expect(res.body.items?.length).toBe(1);
+    });
+
+    it('lists submission pipelines for owner', async () => {
+      const student = 'pipe_student2';
+      db.users.set(student, { id: student, email: 'pipe_student2@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Pipe 401', createdById: student } });
+      const submission = await prismaMock.submission.create({
+        data: { assignmentId: 'a1', courseId: course.id, userId: student, number: 1, status: 'UPLOADING' },
+      });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: student, courseId: course.id } },
+        create: { userId: student, courseId: course.id, role: 'STUDENT' },
+        update: { role: 'STUDENT' },
+      });
+      await prismaMock.pipelineRun.create({
+        data: {
+          pipeline: 'SUBMISSION_PROCESS',
+          courseId: course.id,
+          accountId: 'acct_2',
+          submissionId: submission.id,
+          status: 'QUEUED',
+        },
+      });
+
+      const res = await request(app)
+        .get(`/v1/submissions/${submission.id}/pipelines`)
+        .set('Authorization', `Bearer valid.${student}`);
+      expect(res.status).toBe(200);
+      expect(res.body.items?.length).toBe(1);
+    });
+
+    it('returns pipeline run with steps', async () => {
+      const owner = 'pipe_owner3';
+      db.users.set(owner, { id: owner, email: 'pipe_owner3@example.com' });
+      const course = await prismaMock.course.create({ data: { title: 'Pipe 501', createdById: owner } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: owner, courseId: course.id } },
+        create: { userId: owner, courseId: course.id, role: 'OWNER' },
+        update: { role: 'OWNER' },
+      });
+      const run = await prismaMock.pipelineRun.create({
+        data: {
+          pipeline: 'ASSIGNMENT_PROCESS',
+          courseId: course.id,
+          accountId: 'acct_3',
+          status: 'QUEUED',
+        },
+      });
+      await prismaMock.pipelineStep.create({
+        data: { runId: run.id, name: 'ASSIGNMENT_TEX_NORMALIZE', status: 'QUEUED' },
+      });
+
+      const res = await request(app)
+        .get(`/v1/pipeline-runs/${run.id}`)
+        .set('Authorization', `Bearer valid.${owner}`);
+      expect(res.status).toBe(200);
+      expect(res.body.steps?.length).toBe(1);
     });
   });
 });

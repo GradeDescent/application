@@ -70,6 +70,33 @@ enum BillingMetric {
   split_tex
 }
 
+enum PipelineName {
+  ASSIGNMENT_PROCESS
+  SUBMISSION_PROCESS
+}
+
+enum PipelineStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum PipelineStepStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  CANCELED
+}
+
+enum PipelineArtifactDirection {
+  INPUT
+  OUTPUT
+}
+
 model User {
   id              String    @id @default(cuid())
   email           String    @unique
@@ -89,6 +116,7 @@ model User {
   createdAssignments Assignment[]
   submissions     Submission[]
   billingAccounts Account[]
+  pipelineRunsCreated PipelineRun[] @relation("PipelineRunCreator")
 }
 
 model OAuthAccount {
@@ -117,6 +145,7 @@ model Course {
   memberships CourseMembership[]
   assignments Assignment[]
   submissions Submission[]
+  pipelineRuns PipelineRun[]
   billing     CourseBilling?
   usageEvents UsageEvent[]
 
@@ -190,6 +219,7 @@ model Account {
   courseLinks  CourseBilling[]
   ledgerEntries LedgerEntry[]
   usageEvents  UsageEvent[]
+  pipelineRuns PipelineRun[]
 
   @@unique([type, ownerUserId])
 }
@@ -207,7 +237,7 @@ model CourseBilling {
 
 model AccountBalance {
   accountId            String   @id
-  currency             String
+  currency             String   @default("USD")
   balanceMicrodollars  BigInt
   updatedAt            DateTime @updatedAt
 
@@ -230,7 +260,7 @@ model LedgerEntry {
 
   @@index([accountId, createdAt])
   @@index([relatedType, relatedId])
-  @@unique([accountId, idempotencyKey])
+  @@index([accountId, idempotencyKey])
 }
 
 model RateCard {
@@ -263,6 +293,11 @@ model UsageEvent {
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  assignment Assignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  submission Submission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  evaluation Evaluation? @relation(fields: [evaluationId], references: [id], onDelete: SetNull)
+  pipelineRun PipelineRun? @relation(fields: [pipelineRunId], references: [id], onDelete: SetNull)
+  pipelineStep PipelineStep? @relation(fields: [pipelineStepId], references: [id], onDelete: SetNull)
 
   @@index([accountId, createdAt])
   @@index([courseId, createdAt])
@@ -286,6 +321,9 @@ model Assignment {
   createdBy User  @relation(fields: [createdById], references: [id])
 
   submissions Submission[]
+  pipelineRuns PipelineRun[]
+  problems AssignmentProblem[]
+  usageEvents UsageEvent[]
 
   @@index([courseId, status])
   @@index([courseId])
@@ -313,9 +351,13 @@ model Submission {
 
   artifacts   Artifact[]
   evaluations Evaluation[]
+  pipelineRuns PipelineRun[]
+  problems SubmissionProblem[]
+  usageEvents UsageEvent[]
 
   @@unique([assignmentId, userId, number])
   @@index([assignmentId, userId])
+  @@index([assignmentId, userId, createdAt])
   @@index([courseId, userId])
 }
 
@@ -334,6 +376,7 @@ model Artifact {
   createdAt   DateTime        @default(now())
 
   submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  pipelineStepArtifacts PipelineStepArtifact[]
 
   primaryForSubmission   Submission[] @relation("PrimaryArtifact")
   canonicalForSubmission Submission[] @relation("CanonicalTexArtifact")
@@ -354,6 +397,143 @@ model Evaluation {
   errorMessage String?
 
   submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  pipelineRuns PipelineRun[]
+  problemEvaluations ProblemEvaluation[]
+  usageEvents UsageEvent[]
 
   @@index([submissionId])
+}
+
+model PipelineRun {
+  id               String         @id @default(cuid())
+  pipeline         PipelineName
+  courseId         String
+  accountId        String
+  assignmentId     String?
+  submissionId     String?
+  evaluationId     String?
+  status           PipelineStatus
+  createdByUserId  String?
+  createdByService String?
+  idempotencyKey   String?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  errorMessage     String?
+  meta             Json           @default("{}")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  course     Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  assignment Assignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  submission Submission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  evaluation Evaluation? @relation(fields: [evaluationId], references: [id], onDelete: SetNull)
+  createdBy  User?       @relation("PipelineRunCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  steps      PipelineStep[]
+  usageEvents UsageEvent[]
+
+  @@index([submissionId, createdAt])
+  @@index([assignmentId, createdAt])
+  @@index([courseId, pipeline, idempotencyKey])
+}
+
+model PipelineStep {
+  id           String             @id @default(cuid())
+  runId        String
+  name         String
+  status       PipelineStepStatus
+  runAt        DateTime           @default(now())
+  priority     Int                @default(0)
+  attempt      Int                @default(0)
+  maxAttempts  Int                @default(3)
+  lockedBy     String?
+  lockedUntil  DateTime?
+  heartbeatAt  DateTime?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  errorMessage String?
+  meta         Json               @default("{}")
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  run       PipelineRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  events    PipelineStepEvent[]
+  artifacts PipelineStepArtifact[]
+  usageEvents UsageEvent[]
+
+  @@index([runAt, priority, id])
+  @@index([lockedUntil])
+  @@index([runId, status])
+}
+
+model PipelineStepArtifact {
+  stepId     String
+  artifactId String
+  direction  PipelineArtifactDirection
+
+  step     PipelineStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  artifact Artifact     @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+
+  @@id([stepId, artifactId, direction])
+}
+
+model PipelineStepEvent {
+  id        Int      @id @default(autoincrement())
+  stepId    String
+  level     String
+  message   String
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  step PipelineStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@index([stepId, id])
+}
+
+model AssignmentProblem {
+  id           String   @id @default(cuid())
+  assignmentId String
+  problemIndex Int
+  title        String?
+  maxPoints    Int?
+  promptTex    String?
+  rubric       Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  evaluations ProblemEvaluation[]
+
+  @@unique([assignmentId, problemIndex])
+}
+
+model SubmissionProblem {
+  id           String   @id @default(cuid())
+  submissionId String
+  problemIndex Int
+  sourceTex    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  evaluations ProblemEvaluation[]
+
+  @@unique([submissionId, problemIndex])
+}
+
+model ProblemEvaluation {
+  id                  String   @id @default(cuid())
+  evaluationId        String
+  submissionProblemId String
+  assignmentProblemId String?
+  score               Int?
+  evaluationJson      Json     @default("{}")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  evaluation        Evaluation         @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  submissionProblem SubmissionProblem @relation(fields: [submissionProblemId], references: [id], onDelete: Cascade)
+  assignmentProblem AssignmentProblem? @relation(fields: [assignmentProblemId], references: [id], onDelete: SetNull)
+
+  @@unique([evaluationId, submissionProblemId])
 }

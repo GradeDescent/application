@@ -5,6 +5,7 @@ import { authRequired } from '../../security/authMiddleware.js';
 import { jsonOk } from '../../../utils/responses.js';
 import { parsePagination } from '../../support/pagination.js';
 import { getCourseBalance, paymentRequiredPayload } from '../../support/billing.js';
+import { createAssignmentPipeline, enforceBillingGate } from '../../support/pipelines.js';
 
 type Role = 'OWNER' | 'INSTRUCTOR' | 'TA' | 'STUDENT';
 
@@ -57,6 +58,10 @@ assignmentsRouter.post('/', authRequired, async (req, res, next) => {
     if (!role) return;
 
     const body = createAssignmentSchema.parse(req.body);
+    const gate = await enforceBillingGate(req.params.courseId);
+    if (!gate.ok) {
+      return res.status(gate.status).json(gate.body);
+    }
     const assignment = await prisma.assignment.create({
       data: {
         courseId: req.params.courseId,
@@ -68,6 +73,15 @@ assignmentsRouter.post('/', authRequired, async (req, res, next) => {
         status: 'DRAFT',
       },
     });
+    const run = await createAssignmentPipeline({
+      courseId: req.params.courseId,
+      assignmentId: assignment.id,
+      accountId: gate.accountId,
+      createdByUserId: req.auth!.user.id,
+    });
+    if (!run.ok) {
+      return res.status(run.status).json(run.body);
+    }
     return jsonOk(res, { assignment }, 201);
   } catch (err) {
     next(err);
@@ -160,11 +174,31 @@ assignmentsRouter.patch('/:assignmentId', authRequired, async (req, res, next) =
     if (!existing) {
       return res.status(404).json({ error: { type: 'not_found', message: 'Assignment not found' } });
     }
+    const sourceTexChanged = body.sourceTex !== undefined && body.sourceTex !== existing.sourceTex;
+    let gateAccountId: string | null = null;
+    if (sourceTexChanged) {
+      const gate = await enforceBillingGate(req.params.courseId);
+      if (!gate.ok) {
+        return res.status(gate.status).json(gate.body);
+      }
+      gateAccountId = gate.accountId;
+    }
 
     const assignment = await prisma.assignment.update({
       where: { id: existing.id },
       data,
     });
+    if (sourceTexChanged) {
+      const run = await createAssignmentPipeline({
+        courseId: req.params.courseId,
+        assignmentId: assignment.id,
+        accountId: gateAccountId ?? undefined,
+        createdByUserId: req.auth!.user.id,
+      });
+      if (!run.ok) {
+        return res.status(run.status).json(run.body);
+      }
+    }
     return jsonOk(res, { assignment });
   } catch (err) {
     next(err);

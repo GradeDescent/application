@@ -6,6 +6,7 @@ import { jsonOk } from '../../../utils/responses.js';
 import { parsePagination } from '../../support/pagination.js';
 import { getCourseBalance, paymentRequiredPayload } from '../../support/billing.js';
 import { buildSubmissionPdfKey, getPresignedDownloadUrl, getPresignedUploadUrl } from '../../support/s3.js';
+import { createSubmissionPipeline } from '../../support/pipelines.js';
 
 type Role = 'OWNER' | 'INSTRUCTOR' | 'TA' | 'STUDENT';
 
@@ -225,6 +226,18 @@ submissionsRouter.post('/submissions/:submissionId/submit', authRequired, async 
       where: { id: submission.id },
       data: updateData,
     });
+    const run = await createSubmissionPipeline({
+      courseId: submission.courseId,
+      assignmentId: submission.assignmentId,
+      submissionId: submission.id,
+      artifactKind: artifact.kind,
+      artifactId: artifact.id,
+      accountId: billing.accountId,
+      createdByUserId: req.auth!.user.id,
+    });
+    if (!run.ok) {
+      return res.status(run.status).json(run.body);
+    }
     return jsonOk(res, { submission: updated });
   } catch (err) {
     next(err);

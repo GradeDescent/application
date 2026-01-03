@@ -340,6 +340,47 @@ Recommended Client Flows
   - POST `/submissions/:id/submit` with `{ primaryArtifactId: artifactId }`
   - Poll `GET /submissions/:id` or `GET /submissions/:id/evaluations`
 
+Pipelines
+- GET `/assignments/:assignmentId/pipelines`
+  - Auth: required
+  - Roles: course member
+  - Success 200: `{ items: PipelineRun[] }`
+
+- GET `/submissions/:submissionId/pipelines`
+  - Auth: required
+  - Roles: submission owner or course staff
+  - Success 200: `{ items: PipelineRun[] }`
+
+- GET `/pipeline-runs/:runId`
+  - Auth: required
+  - Roles: course staff; submission owner if run belongs to their submission
+  - Success 200: `{ run: PipelineRun, steps: PipelineStep[] }`
+
+- GET `/pipeline-steps/:stepId/events`
+  - Auth: required
+  - Roles: course staff
+  - Success 200: `{ items: PipelineStepEvent[] }`
+
+- POST `/assignments/:assignmentId/rerun`
+  - Auth: required
+  - Roles: `OWNER`, `INSTRUCTOR`, `TA`
+  - 202: `{ runId }`
+
+- POST `/submissions/:submissionId/rerun`
+  - Auth: required
+  - Roles: `OWNER`, `INSTRUCTOR`, `TA`
+  - 202: `{ runId }`
+
+- POST `/pipeline-runs/:runId/cancel`
+  - Auth: required
+  - Roles: course staff
+  - 200: `{ canceled: true }`
+
+- POST `/pipeline-steps/:stepId/retry`
+  - Auth: required
+  - Roles: course staff
+  - 200: `{ queued: true }`
+
 - PDF submission flow (S3)
   - POST `/assignments/:id/submissions` → `submissionId`
   - POST `/submissions/:id/artifacts/pdf/presign` → `{ artifactId, upload }`

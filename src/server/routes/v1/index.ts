@@ -6,6 +6,7 @@ import { authRouter } from './auth.js';
 import { assignmentsRouter } from './assignments.js';
 import { submissionsRouter } from './submissions.js';
 import { billingRouter } from './billing.js';
+import { pipelinesRouter } from './pipelines.js';
 
 export const v1Router = Router();
 
@@ -20,3 +21,4 @@ v1Router.use('/courses/:courseId/assignments', assignmentsRouter);
 v1Router.use('/', submissionsRouter);
 v1Router.use('/memberships', membershipsRouter);
 v1Router.use('/billing', billingRouter);
+v1Router.use('/', pipelinesRouter);
