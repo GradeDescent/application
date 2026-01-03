@@ -73,6 +73,11 @@ export default function CourseDetailPage() {
                   <Button asChild variant="outline">
                     <Link href={`/courses/${courseId}/students`}>View students</Link>
                   </Button>
+                  {isOwner ? (
+                    <Button asChild variant="outline">
+                      <Link href={`/courses/${courseId}/billing`}>View billing</Link>
+                    </Button>
+                  ) : null}
                 </div>
               </div>
               <p className="text-sm text-muted-foreground">Code: {courseQuery.data?.code || '—'}</p>
