@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiFetch, ApiError } from '@/lib/apiClient';
 import { useAuth } from '@/lib/auth';
-import { useCourse } from '@/lib/queries';
+import { useCourse, useCourses } from '@/lib/queries';
 import { PageShell } from '@/components/page-shell';
 
 export default function CourseDetailPage() {
@@ -19,6 +19,7 @@ export default function CourseDetailPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const courseQuery = useCourse(courseId);
+  const coursesQuery = useCourses();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +50,8 @@ export default function CourseDetailPage() {
   });
 
   const isOwner = Boolean(user && courseQuery.data && courseQuery.data.createdById === user.id);
+  const courseRole = coursesQuery.data?.items.find((course) => course.id === courseId)?.role;
+  const canViewStudents = courseRole ? ['OWNER', 'INSTRUCTOR', 'TA'].includes(courseRole) : isOwner;
 
   return (
     <AuthGuard>
@@ -62,23 +65,25 @@ export default function CourseDetailPage() {
           ]}
         />
         <main className="mx-auto max-w-5xl flex-1 px-6 py-8 space-y-6">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm">
+            <Button asChild variant="outline">
+              <Link href={`/courses/${courseId}/assignments`}>View assignments</Link>
+            </Button>
+            {canViewStudents ? (
+              <Button asChild variant="outline">
+                <Link href={`/courses/${courseId}/students`}>View students</Link>
+              </Button>
+            ) : null}
+            {isOwner ? (
+              <Button asChild variant="outline">
+                <Link href={`/courses/${courseId}/billing`}>View billing</Link>
+              </Button>
+            ) : null}
+          </div>
           <Card className="border-none bg-card/90 shadow">
             <CardHeader className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <CardTitle>{courseQuery.data?.title || 'Course'}</CardTitle>
-                <div className="flex flex-wrap gap-2">
-                  <Button asChild variant="outline">
-                    <Link href={`/courses/${courseId}/assignments`}>View assignments</Link>
-                  </Button>
-                  <Button asChild variant="outline">
-                    <Link href={`/courses/${courseId}/students`}>View students</Link>
-                  </Button>
-                  {isOwner ? (
-                    <Button asChild variant="outline">
-                      <Link href={`/courses/${courseId}/billing`}>View billing</Link>
-                    </Button>
-                  ) : null}
-                </div>
               </div>
               <p className="text-sm text-muted-foreground">Code: {courseQuery.data?.code || '—'}</p>
             </CardHeader>
