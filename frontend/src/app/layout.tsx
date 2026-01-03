@@ -6,13 +6,13 @@ import { Providers } from "./providers";
 
 const inter = localFont({
   src: "../../public/fonts/Inter-Variable.woff2",
-  variable: "--font-inter",
+  // variable: "--font-inter",
   display: "swap",
 });
 
 const geistMono = localFont({
   src: "../../public/fonts/GeistMono-Variable.woff2",
-  variable: "--font-geist-mono",
+  // variable: "--font-geist-mono",
   display: "swap",
 });
 
