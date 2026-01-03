@@ -2,10 +2,12 @@ import ReactMarkdown from 'react-markdown';
 import { PageShell } from '@/components/page-shell';
 import { SiteHeader } from '@/components/site-header';
 
+export const dynamic = 'force-dynamic';
+
 async function loadPrivacyPolicy() {
   const res = await fetch(
     'https://raw.githubusercontent.com/GradeDescent/.github/refs/heads/main/PRIVACY.md',
-    { next: { revalidate: 3600 } },
+    { cache: 'no-store' },
   );
   if (!res.ok) {
     return '# Privacy Policy\n\nUnable to load the privacy policy at this time.';

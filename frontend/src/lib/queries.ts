@@ -83,8 +83,8 @@ export function useSubmission(submissionId?: string) {
       return submissionSchema.parse(data.submission);
     },
     enabled: !!submissionId,
-    refetchInterval: (data) => {
-      const status = data?.status;
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
       if (status === 'SUBMITTED' || status === 'PROCESSING') {
         const startedAt = pollStart.current ?? Date.now();
         const elapsed = Date.now() - startedAt;
@@ -114,8 +114,8 @@ export function useEvaluations(submissionId?: string) {
       return data.items.map((item) => evaluationSchema.parse(item));
     },
     enabled: !!submissionId,
-    refetchInterval: (data) => {
-      const latest = data?.[data.length - 1];
+    refetchInterval: (query) => {
+      const latest = query.state.data?.[query.state.data.length - 1];
       if (latest && (latest.status === 'QUEUED' || latest.status === 'RUNNING')) {
         const startedAt = pollStart.current ?? Date.now();
         const elapsed = Date.now() - startedAt;

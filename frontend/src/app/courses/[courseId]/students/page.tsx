@@ -39,6 +39,9 @@ export default function CourseStudentsPage() {
     return [];
   }, [viewerRole]);
 
+  const isAllowedTarget = (role: RoleOption | 'OWNER'): role is RoleOption =>
+    role !== 'OWNER' && allowedTargets.includes(role);
+
   const roleMutation = useMutation({
     mutationFn: async ({ memberId, nextRole }: { memberId: string; nextRole: RoleOption }) => {
       await apiFetch(`/memberships/${courseId}/members/${memberId}`, {
@@ -132,7 +135,7 @@ export default function CourseStudentsPage() {
                             disabled={roleMutation.isPending}
                           >
                             {Array.from(new Set([member.role, ...allowedTargets])).map((role) => (
-                              <option key={role} value={role} disabled={!allowedTargets.includes(role)}>
+                              <option key={role} value={role} disabled={!isAllowedTarget(role)}>
                                 {role}
                               </option>
                             ))}
@@ -148,7 +151,7 @@ export default function CourseStudentsPage() {
                             }}
                             disabled={
                               roleMutation.isPending ||
-                              !allowedTargets.includes(roleOverrides[member.id] ?? member.role)
+                              !isAllowedTarget(roleOverrides[member.id] ?? member.role)
                             }
                           >
                             Save
