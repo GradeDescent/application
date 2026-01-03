@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { AuthGuard } from '@/components/auth-guard';
 import { SubmissionWidget } from '@/components/submission-widget';
 import { SiteHeader } from '@/components/site-header';
@@ -76,7 +77,7 @@ export default function AssignmentDetailPage() {
                     ) : submissionsQuery.data?.items.length ? (
                       <div className="divide-y divide-border/60">
                         {submissionsQuery.data.items.map((submission) => (
-                          <div key={submission.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div key={submission.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                               <p className="text-sm font-semibold">Submission #{submission.number}</p>
                               <p className="text-xs text-muted-foreground">
@@ -91,6 +92,14 @@ export default function AssignmentDetailPage() {
                               {submission.submittedAt ? (
                                 <p>{new Date(submission.submittedAt).toLocaleString()}</p>
                               ) : null}
+                              <p className="mt-2">
+                                <Link
+                                  href={`/courses/${courseId}/submissions/${submission.id}`}
+                                  className="text-xs font-semibold text-foreground hover:text-foreground/80"
+                                >
+                                  View submission
+                                </Link>
+                              </p>
                             </div>
                           </div>
                         ))}

@@ -156,8 +156,13 @@ submissionsRouter.get('/assignments/:assignmentId/submissions', authRequired, as
 
 submissionsRouter.get('/submissions/:submissionId', authRequired, async (req, res, next) => {
   try {
-    const submission = await loadSubmission(req, res, req.params.submissionId);
-    if (!submission) return;
+    const submission = await prisma.submission.findUnique({
+      where: { id: req.params.submissionId },
+      include: { user: { select: { id: true, email: true, name: true } } },
+    });
+    if (!submission) {
+      return res.status(404).json({ error: { type: 'not_found', message: 'Submission not found' } });
+    }
     const role = await requireMembership(req, res, submission.courseId);
     if (!role) return;
     if (role === 'STUDENT' && submission.userId !== req.auth!.user.id) {

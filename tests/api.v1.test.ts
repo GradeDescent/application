@@ -359,7 +359,14 @@ const prismaMock = {
       const max = arr.reduce((acc, s) => Math.max(acc, s.number), 0);
       return { _max: { number: arr.length ? max : null } };
     }),
-    findUnique: vi.fn(async ({ where }: any) => db.submissions.get(where.id) || null),
+    findUnique: vi.fn(async ({ where, include }: any) => {
+      const row = db.submissions.get(where.id) || null;
+      if (!row) return null;
+      if (include?.user) {
+        return { ...row, user: db.users.get(row.userId) || null };
+      }
+      return row;
+    }),
     update: vi.fn(async ({ where, data }: any) => {
       const row = db.submissions.get(where.id);
       if (!row) throw new Error('not found');
