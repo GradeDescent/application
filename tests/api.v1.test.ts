@@ -69,6 +69,49 @@ type Evaluation = {
 };
 type IdempotencyKey = { key: string; userId?: string | null; method: string; path: string; statusCode?: number | null; responseBody?: any; lockedAt?: Date | null };
 type MagicLinkToken = { id: string; userId?: string | null; email: string; token: string; expiresAt: Date; consumedAt?: Date | null; createdAt?: Date };
+type AccountType = 'USER' | 'ORG';
+type Account = { id: string; type: AccountType; ownerUserId?: string | null; name?: string | null; createdAt?: Date; updatedAt?: Date };
+type CourseBilling = { courseId: string; accountId: string; createdAt?: Date };
+type AccountBalance = { accountId: string; currency: string; balanceMicrodollars: bigint; updatedAt?: Date };
+type LedgerEntryType = 'CREDIT' | 'CHARGE' | 'REFUND' | 'ADJUSTMENT';
+type LedgerEntry = {
+  id: string;
+  accountId: string;
+  currency: string;
+  type: LedgerEntryType;
+  amountMicrodollars: bigint;
+  relatedType?: string | null;
+  relatedId?: string | null;
+  idempotencyKey?: string | null;
+  meta?: any;
+  createdAt?: Date;
+};
+type BillingMetric = 'vision_page' | 'grade_problem' | 'split_tex';
+type RateCard = {
+  id: string;
+  metric: BillingMetric;
+  unitPriceMicrodollars: bigint;
+  active: boolean;
+  effectiveFrom: Date;
+  effectiveTo?: Date | null;
+  meta?: any;
+};
+type UsageEvent = {
+  id: string;
+  accountId: string;
+  courseId: string;
+  metric: BillingMetric;
+  quantity: number;
+  unitPriceMicrodollars: bigint;
+  costMicrodollars: bigint;
+  assignmentId?: string | null;
+  submissionId?: string | null;
+  evaluationId?: string | null;
+  pipelineRunId?: string | null;
+  pipelineStepId?: string | null;
+  meta?: any;
+  createdAt?: Date;
+};
 
 const db = {
   users: new Map<string, User>(),
@@ -81,6 +124,12 @@ const db = {
   evaluations: new Map<string, Evaluation>(),
   idempotency: new Map<string, IdempotencyKey>(),
   magicTokens: new Map<string, MagicLinkToken>(),
+  accounts: new Map<string, Account>(),
+  courseBilling: new Map<string, CourseBilling>(),
+  accountBalances: new Map<string, AccountBalance>(),
+  ledgerEntries: new Map<string, LedgerEntry>(),
+  rateCards: new Map<string, RateCard>(),
+  usageEvents: new Map<string, UsageEvent>(),
 };
 
 let idSeq = 1;
@@ -425,6 +474,218 @@ const prismaMock = {
       return row;
     }),
   },
+  account: {
+    findUnique: vi.fn(async ({ where }: any) => {
+      if (where?.id) return db.accounts.get(where.id) || null;
+      if (where?.type_ownerUserId) {
+        return (
+          Array.from(db.accounts.values()).find(
+            (account) =>
+              account.type === where.type_ownerUserId.type &&
+              account.ownerUserId === where.type_ownerUserId.ownerUserId,
+          ) || null
+        );
+      }
+      return null;
+    }),
+    upsert: vi.fn(async ({ where, create, update }: any) => {
+      const existing = await prismaMock.account.findUnique({ where });
+      if (existing) {
+        const row = { ...existing, ...update, updatedAt: new Date() } as Account;
+        db.accounts.set(existing.id, row);
+        return row;
+      }
+      const id = create.id ?? cuid();
+      const row: Account = {
+        id,
+        type: create.type,
+        ownerUserId: create.ownerUserId ?? null,
+        name: create.name ?? null,
+        createdAt: create.createdAt ?? new Date(),
+        updatedAt: create.updatedAt ?? new Date(),
+      };
+      db.accounts.set(id, row);
+      return row;
+    }),
+  },
+  accountBalance: {
+    findUnique: vi.fn(async ({ where }: any) => {
+      return db.accountBalances.get(where.accountId) || null;
+    }),
+    upsert: vi.fn(async ({ where, create, update }: any) => {
+      const existing = db.accountBalances.get(where.accountId);
+      if (existing) {
+        const increment = update?.balanceMicrodollars?.increment ?? 0n;
+        const nextBalance =
+          update?.balanceMicrodollars === undefined
+            ? existing.balanceMicrodollars
+            : update.balanceMicrodollars.increment !== undefined
+              ? existing.balanceMicrodollars + increment
+              : update.balanceMicrodollars;
+        const row: AccountBalance = {
+          ...existing,
+          currency: update?.currency ?? existing.currency,
+          balanceMicrodollars: nextBalance,
+          updatedAt: new Date(),
+        };
+        db.accountBalances.set(where.accountId, row);
+        return row;
+      }
+      const row: AccountBalance = {
+        accountId: create.accountId,
+        currency: create.currency,
+        balanceMicrodollars: create.balanceMicrodollars ?? 0n,
+        updatedAt: new Date(),
+      };
+      db.accountBalances.set(where.accountId, row);
+      return row;
+    }),
+  },
+  courseBilling: {
+    findUnique: vi.fn(async ({ where }: any) => db.courseBilling.get(where.courseId) || null),
+    upsert: vi.fn(async ({ where, create, update }: any) => {
+      const existing = db.courseBilling.get(where.courseId);
+      if (existing) {
+        const row: CourseBilling = { ...existing, ...update };
+        db.courseBilling.set(where.courseId, row);
+        return row;
+      }
+      const row: CourseBilling = { courseId: create.courseId, accountId: create.accountId, createdAt: new Date() };
+      db.courseBilling.set(where.courseId, row);
+      return row;
+    }),
+    create: vi.fn(async ({ data }: any) => {
+      const row: CourseBilling = { courseId: data.courseId, accountId: data.accountId, createdAt: new Date() };
+      db.courseBilling.set(row.courseId, row);
+      return row;
+    }),
+  },
+  ledgerEntry: {
+    create: vi.fn(async ({ data }: any) => {
+      const id = data.id ?? cuid();
+      const row: LedgerEntry = {
+        id,
+        accountId: data.accountId,
+        currency: data.currency,
+        type: data.type,
+        amountMicrodollars: data.amountMicrodollars,
+        relatedType: data.relatedType ?? null,
+        relatedId: data.relatedId ?? null,
+        idempotencyKey: data.idempotencyKey ?? null,
+        meta: data.meta ?? null,
+        createdAt: new Date(),
+      };
+      db.ledgerEntries.set(id, row);
+      return row;
+    }),
+    findMany: vi.fn(async ({ where, take, cursor, skip }: any) => {
+      let items = Array.from(db.ledgerEntries.values()).filter((entry) => entry.accountId === where.accountId);
+      items = items.sort((a, b) => a.id.localeCompare(b.id));
+      if (cursor?.id) {
+        const index = items.findIndex((entry) => entry.id === cursor.id);
+        if (index >= 0) items = items.slice(index + (skip ?? 0));
+      }
+      return take ? items.slice(0, take) : items;
+    }),
+  },
+  rateCard: {
+    create: vi.fn(async ({ data }: any) => {
+      const id = data.id ?? cuid();
+      const row: RateCard = {
+        id,
+        metric: data.metric,
+        unitPriceMicrodollars: data.unitPriceMicrodollars,
+        active: data.active ?? true,
+        effectiveFrom: data.effectiveFrom ?? new Date(),
+        effectiveTo: data.effectiveTo ?? null,
+        meta: data.meta ?? null,
+      };
+      db.rateCards.set(id, row);
+      return row;
+    }),
+    findFirst: vi.fn(async ({ where, orderBy }: any) => {
+      const now = new Date();
+      let items = Array.from(db.rateCards.values()).filter((rate) => {
+        if (where?.metric && rate.metric !== where.metric) return false;
+        if (where?.active !== undefined && rate.active !== where.active) return false;
+        if (where?.effectiveFrom?.lte && rate.effectiveFrom > where.effectiveFrom.lte) return false;
+        if (where?.OR) {
+          const ok = where.OR.some((clause: any) => {
+            if (clause.effectiveTo === null) return rate.effectiveTo === null;
+            if (clause.effectiveTo?.gt) return rate.effectiveTo && rate.effectiveTo > clause.effectiveTo.gt;
+            return false;
+          });
+          if (!ok) return false;
+        }
+        if (where?.effectiveTo === null && rate.effectiveTo !== null) return false;
+        return true;
+      });
+      if (orderBy?.effectiveFrom) {
+        items = items.sort((a, b) => {
+          return orderBy.effectiveFrom === 'desc'
+            ? b.effectiveFrom.getTime() - a.effectiveFrom.getTime()
+            : a.effectiveFrom.getTime() - b.effectiveFrom.getTime();
+        });
+      }
+      return items[0] || null;
+    }),
+    findMany: vi.fn(async ({ where, orderBy }: any) => {
+      const now = new Date();
+      let items = Array.from(db.rateCards.values()).filter((rate) => {
+        if (where?.active !== undefined && rate.active !== where.active) return false;
+        if (where?.effectiveFrom?.lte && rate.effectiveFrom > where.effectiveFrom.lte) return false;
+        if (where?.OR) {
+          const ok = where.OR.some((clause: any) => {
+            if (clause.effectiveTo === null) return rate.effectiveTo === null;
+            if (clause.effectiveTo?.gt) return rate.effectiveTo && rate.effectiveTo > clause.effectiveTo.gt;
+            return false;
+          });
+          if (!ok) return false;
+        }
+        return true;
+      });
+      if (orderBy?.effectiveFrom) {
+        items = items.sort((a, b) => {
+          return orderBy.effectiveFrom === 'desc'
+            ? b.effectiveFrom.getTime() - a.effectiveFrom.getTime()
+            : a.effectiveFrom.getTime() - b.effectiveFrom.getTime();
+        });
+      }
+      return items;
+    }),
+  },
+  usageEvent: {
+    create: vi.fn(async ({ data }: any) => {
+      const id = data.id ?? cuid();
+      const row: UsageEvent = {
+        id,
+        accountId: data.accountId,
+        courseId: data.courseId,
+        metric: data.metric,
+        quantity: data.quantity,
+        unitPriceMicrodollars: data.unitPriceMicrodollars,
+        costMicrodollars: data.costMicrodollars,
+        assignmentId: data.assignmentId ?? null,
+        submissionId: data.submissionId ?? null,
+        evaluationId: data.evaluationId ?? null,
+        pipelineRunId: data.pipelineRunId ?? null,
+        pipelineStepId: data.pipelineStepId ?? null,
+        meta: data.meta ?? null,
+        createdAt: new Date(),
+      };
+      db.usageEvents.set(id, row);
+      return row;
+    }),
+  },
+  $transaction: vi.fn(async (input: any) => {
+    if (typeof input === 'function') {
+      return input(prismaMock);
+    }
+    if (Array.isArray(input)) {
+      return Promise.all(input);
+    }
+    return input;
+  }),
 };
 
 // We will stub Prisma and certain helpers after importing modules
@@ -445,6 +706,13 @@ beforeAll(async () => {
   p.idempotencyKey = prismaMock.idempotencyKey;
   p.serviceToken = prismaMock.serviceToken;
   p.magicLinkToken = prismaMock.magicLinkToken;
+  p.account = prismaMock.account;
+  p.accountBalance = prismaMock.accountBalance;
+  p.courseBilling = prismaMock.courseBilling;
+  p.ledgerEntry = prismaMock.ledgerEntry;
+  p.rateCard = prismaMock.rateCard;
+  p.usageEvent = prismaMock.usageEvent;
+  p.$transaction = prismaMock.$transaction;
 
   // Stub JWT verification used by authenticate middleware
   const jwtMod: any = await import('../dist/utils/jwt.js');
@@ -1235,6 +1503,180 @@ describe('API v1', () => {
         .set('Content-Type', 'application/json')
         .send({});
       expect(createEval.status).toBe(403);
+    });
+  });
+
+  describe('Billing', () => {
+    it('GET /v1/billing/me returns account and zero balance', async () => {
+      const userId = 'billing-user';
+      const res = await request(app)
+        .get('/v1/billing/me')
+        .set('Authorization', `Bearer valid.${userId}`);
+      expect(res.status).toBe(200);
+      expect(res.body.account?.type).toBe('USER');
+      expect(res.body.balance?.balanceMicrodollars).toBe(0);
+    });
+
+    it('GET /v1/billing/rates returns active rates', async () => {
+      await prismaMock.rateCard.create({
+        data: { metric: 'vision_page', unitPriceMicrodollars: 5000n, active: true, effectiveFrom: new Date() },
+      });
+      await prismaMock.rateCard.create({
+        data: { metric: 'split_tex', unitPriceMicrodollars: 10000n, active: true, effectiveFrom: new Date() },
+      });
+      await prismaMock.rateCard.create({
+        data: { metric: 'grade_problem', unitPriceMicrodollars: 3000n, active: false, effectiveFrom: new Date() },
+      });
+
+      const res = await request(app).get('/v1/billing/rates');
+      expect(res.status).toBe(200);
+      const metrics = res.body.items?.map((item: any) => item.metric) || [];
+      expect(metrics).toContain('vision_page');
+      expect(metrics).toContain('split_tex');
+      expect(metrics).not.toContain('grade_problem');
+    });
+
+    it('GET /v1/courses/:courseId/billing returns balance for staff', async () => {
+      const owner = 'billing-owner';
+      const course = await prismaMock.course.create({ data: { title: 'Billing 101', createdById: owner } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: owner, courseId: course.id } },
+        create: { userId: owner, courseId: course.id, role: 'TA' },
+        update: { role: 'TA' },
+      });
+      const account = await prismaMock.account.upsert({
+        where: { type_ownerUserId: { type: 'USER', ownerUserId: owner } },
+        create: { type: 'USER', ownerUserId: owner, name: 'Owner' },
+        update: {},
+      });
+      await prismaMock.accountBalance.upsert({
+        where: { accountId: account.id },
+        create: { accountId: account.id, currency: 'USD', balanceMicrodollars: 250000n },
+        update: {},
+      });
+      await prismaMock.courseBilling.create({ data: { courseId: course.id, accountId: account.id } });
+
+      const res = await request(app)
+        .get(`/v1/courses/${course.id}/billing`)
+        .set('Authorization', `Bearer valid.${owner}`);
+      expect(res.status).toBe(200);
+      expect(res.body.accountId).toBe(account.id);
+      expect(res.body.balance?.balanceMicrodollars).toBe(250000);
+    });
+
+    it('blocks publishing when balance is negative', async () => {
+      const owner = 'billing-owner-2';
+      const course = await prismaMock.course.create({ data: { title: 'Billing 201', createdById: owner } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: owner, courseId: course.id } },
+        create: { userId: owner, courseId: course.id, role: 'OWNER' },
+        update: { role: 'OWNER' },
+      });
+      const assignment = await prismaMock.assignment.create({
+        data: { courseId: course.id, title: 'HW', totalPoints: 10, sourceTex: 'x', createdById: owner, status: 'DRAFT' },
+      });
+      const account = await prismaMock.account.upsert({
+        where: { type_ownerUserId: { type: 'USER', ownerUserId: owner } },
+        create: { type: 'USER', ownerUserId: owner, name: 'Owner' },
+        update: {},
+      });
+      await prismaMock.accountBalance.upsert({
+        where: { accountId: account.id },
+        create: { accountId: account.id, currency: 'USD', balanceMicrodollars: -1n },
+        update: { balanceMicrodollars: -1n },
+      });
+      await prismaMock.courseBilling.create({ data: { courseId: course.id, accountId: account.id } });
+
+      const res = await request(app)
+        .post(`/v1/courses/${course.id}/assignments/${assignment.id}/publish`)
+        .set('Authorization', `Bearer valid.${owner}`)
+        .set('Content-Type', 'application/json');
+      expect(res.status).toBe(402);
+      expect(res.body.error?.type).toBe('payment_required');
+      const stored = db.assignments.get(assignment.id);
+      expect(stored?.status).toBe('DRAFT');
+    });
+
+    it('blocks submission when balance is negative', async () => {
+      const student = 'billing-student';
+      const course = await prismaMock.course.create({ data: { title: 'Billing 301', createdById: student } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: student, courseId: course.id } },
+        create: { userId: student, courseId: course.id, role: 'STUDENT' },
+        update: { role: 'STUDENT' },
+      });
+      const submission = await prismaMock.submission.create({
+        data: { assignmentId: 'a1', courseId: course.id, userId: student, number: 1, status: 'UPLOADING' },
+      });
+      const artifact = await prismaMock.artifact.create({
+        data: {
+          submissionId: submission.id,
+          kind: 'TEX',
+          origin: 'UPLOAD',
+          storage: 'DB',
+          texBody: 'x',
+        },
+      });
+      const account = await prismaMock.account.upsert({
+        where: { type_ownerUserId: { type: 'USER', ownerUserId: student } },
+        create: { type: 'USER', ownerUserId: student, name: 'Student' },
+        update: {},
+      });
+      await prismaMock.accountBalance.upsert({
+        where: { accountId: account.id },
+        create: { accountId: account.id, currency: 'USD', balanceMicrodollars: -10n },
+        update: { balanceMicrodollars: -10n },
+      });
+      await prismaMock.courseBilling.create({ data: { courseId: course.id, accountId: account.id } });
+
+      const res = await request(app)
+        .post(`/v1/submissions/${submission.id}/submit`)
+        .set('Authorization', `Bearer valid.${student}`)
+        .set('Content-Type', 'application/json')
+        .send({ primaryArtifactId: artifact.id });
+      expect(res.status).toBe(402);
+      expect(res.body.error?.type).toBe('payment_required');
+      const stored = db.submissions.get(submission.id);
+      expect(stored?.status).toBe('UPLOADING');
+    });
+
+    it('blocks evaluations when balance is negative', async () => {
+      const owner = 'billing-owner-3';
+      const course = await prismaMock.course.create({ data: { title: 'Billing 401', createdById: owner } });
+      await prismaMock.courseMembership.upsert({
+        where: { userId_courseId: { userId: owner, courseId: course.id } },
+        create: { userId: owner, courseId: course.id, role: 'OWNER' },
+        update: { role: 'OWNER' },
+      });
+      const submission = await prismaMock.submission.create({
+        data: {
+          assignmentId: 'a2',
+          courseId: course.id,
+          userId: owner,
+          number: 1,
+          status: 'READY',
+          canonicalTexArtifactId: 'art-1',
+        },
+      });
+      const account = await prismaMock.account.upsert({
+        where: { type_ownerUserId: { type: 'USER', ownerUserId: owner } },
+        create: { type: 'USER', ownerUserId: owner, name: 'Owner' },
+        update: {},
+      });
+      await prismaMock.accountBalance.upsert({
+        where: { accountId: account.id },
+        create: { accountId: account.id, currency: 'USD', balanceMicrodollars: -50n },
+        update: { balanceMicrodollars: -50n },
+      });
+      await prismaMock.courseBilling.create({ data: { courseId: course.id, accountId: account.id } });
+
+      const res = await request(app)
+        .post(`/v1/submissions/${submission.id}/evaluations`)
+        .set('Authorization', `Bearer valid.${owner}`)
+        .set('Content-Type', 'application/json')
+        .send({});
+      expect(res.status).toBe(402);
+      expect(res.body.error?.type).toBe('payment_required');
     });
   });
 });

@@ -6,6 +6,7 @@ import { jsonOk } from '../../../utils/responses.js';
 import { parsePagination } from '../../support/pagination.js';
 import { requireCourseRole } from '../../security/rbac.js';
 import { generateUniqueCourseCode, isUrlSafeCourseCode, normalizeCourseCode } from '../../support/courseCodes.js';
+import { getCourseBalance, getOrCreateUserAccount } from '../../support/billing.js';
 
 export const coursesRouter = Router();
 
@@ -39,16 +40,23 @@ coursesRouter.post('/', authRequired, async (req, res, next) => {
         return res.status(409).json({ error: { type: 'conflict', message: 'Course code already in use' } });
       }
     }
-    const course = await prisma.course.create({
-      data: {
-        title: body.title,
-        code,
-        description: body.description,
-        createdById: req.auth!.user.id,
-        memberships: {
-          create: { userId: req.auth!.user.id, role: 'OWNER' },
+    const course = await prisma.$transaction(async (tx) => {
+      const account = await getOrCreateUserAccount(req.auth!.user.id, tx);
+      const created = await tx.course.create({
+        data: {
+          title: body.title,
+          code,
+          description: body.description,
+          createdById: req.auth!.user.id,
+          memberships: {
+            create: { userId: req.auth!.user.id, role: 'OWNER' },
+          },
         },
-      },
+      });
+      await tx.courseBilling.create({
+        data: { courseId: created.id, accountId: account.id },
+      });
+      return created;
     });
     return jsonOk(res, { course }, 201);
   } catch (err) {
@@ -105,6 +113,39 @@ coursesRouter.patch('/:courseId', authRequired, requireCourseRole('courseId', ['
       },
     });
     return jsonOk(res, { course: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+coursesRouter.get('/:courseId/billing', authRequired, requireCourseRole('courseId', ['OWNER', 'INSTRUCTOR', 'TA']), async (req, res, next) => {
+  try {
+    const billing = await getCourseBalance(req.params.courseId);
+    if (!billing) {
+      return res.status(404).json({ error: { type: 'not_found', message: 'Course not found' } });
+    }
+    const now = new Date();
+    const rates = await prisma.rateCard.findMany({
+      where: {
+        active: true,
+        effectiveFrom: { lte: now },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
+      },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+
+    return jsonOk(res, {
+      courseId: req.params.courseId,
+      accountId: billing.accountId,
+      balance: {
+        currency: billing.currency,
+        balanceMicrodollars: Number(billing.balanceMicrodollars),
+      },
+      rates: rates.map((rate) => ({
+        metric: rate.metric,
+        unitPriceMicrodollars: Number(rate.unitPriceMicrodollars),
+      })),
+    });
   } catch (err) {
     next(err);
   }

@@ -94,6 +94,55 @@ Courses
   - 404: `{ error: { type: "not_found", message: "Course not found" } }`
   - 403 if no membership
 
+Course Billing
+- GET `/courses/:courseId/billing`
+  - Auth: required
+  - Roles: `OWNER`, `INSTRUCTOR`, `TA`
+  - Success 200:
+    ```json
+    {
+      "courseId": "c_...",
+      "accountId": "acct_...",
+      "balance": { "currency": "USD", "balanceMicrodollars": 0 },
+      "rates": [{ "metric": "vision_page", "unitPriceMicrodollars": 5000 }]
+    }
+    ```
+  - 403 forbidden, 404 not found
+
+Billing
+- GET `/billing/me`
+  - Auth: required (user token)
+  - Success 200: `{ account, balance }`
+
+- GET `/billing/accounts/:accountId`
+  - Auth: required (owner)
+  - Success 200: `{ account, balance }`
+
+- GET `/billing/accounts/:accountId/ledger`
+  - Auth: required (owner)
+  - Query: `limit?`, `cursor?`
+  - Success 200: `{ items, next_cursor }`
+
+- GET `/billing/rates`
+  - Auth: optional
+  - Success 200: `{ items: [{ metric, unitPriceMicrodollars }] }`
+
+- POST `/billing/topups/checkout-session`
+  - Auth: required (owner)
+  - Body: `{ accountId, amountMicrodollars, successUrl, cancelUrl }`
+  - Response: 501 not implemented
+
+- POST `/billing/webhook/stripe`
+  - Auth: not required (webhook)
+  - Body: `{ accountId, amountMicrodollars, idempotencyKey? }`
+  - Success 200: `{ received: true, balanceMicrodollars }`
+
+- POST `/billing/internal/charge`
+  - Auth: required (service token)
+  - Headers: optional `Idempotency-Key`
+  - Body: `{ accountId, courseId, metric, quantity, relatedType, relatedId, meta? }`
+  - Success 201: `{ chargedMicrodollars, unitPriceMicrodollars, balanceMicrodollars }`
+
 Memberships
 - GET `/memberships/:courseId/members`
   - Auth: required
@@ -158,6 +207,7 @@ Assignments
   - Roles: `OWNER`, `INSTRUCTOR`
   - Headers: optional `Idempotency-Key`
   - Success 200: `{ assignment: Assignment }` (status `PUBLISHED`, `publishedAt` set)
+  - 402 payment_required if balance is negative
   - 403 forbidden, 404 not found, 409 if archived
 
 - POST `/courses/:courseId/assignments/:assignmentId/unpublish`
@@ -200,6 +250,7 @@ Submissions
   - Headers: `Content-Type: application/json`, optional `Idempotency-Key`
   - Body: `{ primaryArtifactId: string }`
   - Success 200: `{ submission: Submission }`
+  - 402 payment_required if balance is negative
   - 400 validation_error (missing/invalid primaryArtifactId, artifact not owned by submission)
   - 409 conflict (already submitted)
 
@@ -274,6 +325,7 @@ Evaluations
   - Headers: `Content-Type: application/json`, optional `Idempotency-Key`
   - Body: `{ model?: string }`
   - Success 202: `{ evaluation: Evaluation }`
+  - 402 payment_required if balance is negative
   - 409 conflict if canonical TeX does not exist
 
 - GET `/evaluations/:evaluationId`

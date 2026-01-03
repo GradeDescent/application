@@ -52,6 +52,24 @@ enum EvaluationStatus {
   FAILED
 }
 
+enum AccountType {
+  USER
+  ORG
+}
+
+enum LedgerEntryType {
+  CREDIT
+  CHARGE
+  REFUND
+  ADJUSTMENT
+}
+
+enum BillingMetric {
+  vision_page
+  grade_problem
+  split_tex
+}
+
 model User {
   id              String    @id @default(cuid())
   email           String    @unique
@@ -70,6 +88,7 @@ model User {
   idempotencyKeys IdempotencyKey[]
   createdAssignments Assignment[]
   submissions     Submission[]
+  billingAccounts Account[]
 }
 
 model OAuthAccount {
@@ -98,6 +117,8 @@ model Course {
   memberships CourseMembership[]
   assignments Assignment[]
   submissions Submission[]
+  billing     CourseBilling?
+  usageEvents UsageEvent[]
 
   @@index([code])
 }
@@ -154,6 +175,98 @@ model ServiceToken {
   lastUsedAt  DateTime?
 
   createdBy User @relation(fields: [createdById], references: [id])
+}
+
+model Account {
+  id          String      @id @default(cuid())
+  type        AccountType
+  ownerUserId String?
+  name        String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  owner        User?             @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  balance      AccountBalance?
+  courseLinks  CourseBilling[]
+  ledgerEntries LedgerEntry[]
+  usageEvents  UsageEvent[]
+
+  @@unique([type, ownerUserId])
+}
+
+model CourseBilling {
+  courseId  String   @id
+  accountId String
+  createdAt DateTime @default(now())
+
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+}
+
+model AccountBalance {
+  accountId            String   @id
+  currency             String
+  balanceMicrodollars  BigInt
+  updatedAt            DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model LedgerEntry {
+  id                 String          @id @default(cuid())
+  accountId          String
+  currency           String
+  type               LedgerEntryType
+  amountMicrodollars BigInt
+  relatedType        String?
+  relatedId          String?
+  idempotencyKey     String?
+  meta               Json?
+  createdAt          DateTime        @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([relatedType, relatedId])
+  @@unique([accountId, idempotencyKey])
+}
+
+model RateCard {
+  id                   String        @id @default(cuid())
+  metric               BillingMetric
+  unitPriceMicrodollars BigInt
+  active               Boolean       @default(true)
+  effectiveFrom        DateTime      @default(now())
+  effectiveTo          DateTime?
+  meta                 Json?
+
+  @@index([metric, active, effectiveFrom])
+}
+
+model UsageEvent {
+  id                   String        @id @default(cuid())
+  accountId            String
+  courseId             String
+  metric               BillingMetric
+  quantity             Int
+  unitPriceMicrodollars BigInt
+  costMicrodollars     BigInt
+  assignmentId         String?
+  submissionId         String?
+  evaluationId         String?
+  pipelineRunId        String?
+  pipelineStepId       String?
+  meta                 Json?
+  createdAt            DateTime      @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([courseId, createdAt])
+  @@index([metric])
 }
 
 model Assignment {

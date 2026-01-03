@@ -4,6 +4,7 @@ import { prisma } from '../../../services/prisma.js';
 import { authRequired } from '../../security/authMiddleware.js';
 import { jsonOk } from '../../../utils/responses.js';
 import { parsePagination } from '../../support/pagination.js';
+import { getCourseBalance, paymentRequiredPayload } from '../../support/billing.js';
 
 type Role = 'OWNER' | 'INSTRUCTOR' | 'TA' | 'STUDENT';
 
@@ -191,6 +192,14 @@ submissionsRouter.post('/submissions/:submissionId/submit', authRequired, async 
       }
     } else if (!artifact.texBody) {
       return res.status(400).json({ error: { type: 'validation_error', message: 'Primary TeX missing' } });
+    }
+
+    const billing = await getCourseBalance(submission.courseId);
+    if (!billing) {
+      return res.status(404).json({ error: { type: 'not_found', message: 'Course not found' } });
+    }
+    if (billing.balanceMicrodollars < 0n) {
+      return res.status(402).json(paymentRequiredPayload(billing.balanceMicrodollars));
     }
 
     const nextStatus = artifact.kind === 'TEX' ? 'READY' : 'PROCESSING';
@@ -496,6 +505,13 @@ submissionsRouter.post('/submissions/:submissionId/evaluations', authRequired, a
     }
 
     const body = createEvaluationSchema.parse(req.body ?? {});
+    const billing = await getCourseBalance(submission.courseId);
+    if (!billing) {
+      return res.status(404).json({ error: { type: 'not_found', message: 'Course not found' } });
+    }
+    if (billing.balanceMicrodollars < 0n) {
+      return res.status(402).json(paymentRequiredPayload(billing.balanceMicrodollars));
+    }
     const evaluation = await prisma.evaluation.create({
       data: {
         submissionId: submission.id,

@@ -4,6 +4,7 @@ import { prisma } from '../../../services/prisma.js';
 import { authRequired } from '../../security/authMiddleware.js';
 import { jsonOk } from '../../../utils/responses.js';
 import { parsePagination } from '../../support/pagination.js';
+import { getCourseBalance, paymentRequiredPayload } from '../../support/billing.js';
 
 type Role = 'OWNER' | 'INSTRUCTOR' | 'TA' | 'STUDENT';
 
@@ -187,6 +188,14 @@ assignmentsRouter.post('/:assignmentId/publish', authRequired, async (req, res, 
 
     if (assignment.status === 'PUBLISHED' && assignment.publishedAt) {
       return jsonOk(res, { assignment });
+    }
+
+    const billing = await getCourseBalance(req.params.courseId);
+    if (!billing) {
+      return res.status(404).json({ error: { type: 'not_found', message: 'Course not found' } });
+    }
+    if (billing.balanceMicrodollars < 0n) {
+      return res.status(402).json(paymentRequiredPayload(billing.balanceMicrodollars));
     }
 
     const updated = await prisma.assignment.update({
