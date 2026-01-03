@@ -5,6 +5,7 @@ import { authRequired } from '../../security/authMiddleware.js';
 import { jsonOk } from '../../../utils/responses.js';
 import { parsePagination } from '../../support/pagination.js';
 import { getCourseBalance, paymentRequiredPayload } from '../../support/billing.js';
+import { buildSubmissionPdfKey, getPresignedDownloadUrl, getPresignedUploadUrl } from '../../support/s3.js';
 
 type Role = 'OWNER' | 'INSTRUCTOR' | 'TA' | 'STUDENT';
 
@@ -132,6 +133,9 @@ submissionsRouter.get('/assignments/:assignmentId/submissions', authRequired, as
       where: {
         assignmentId: assignment.id,
         ...(userIdFilter ? { userId: userIdFilter } : {}),
+      },
+      include: {
+        user: { select: { id: true, email: true, name: true } },
       },
       orderBy: { id: 'asc' },
       take: limit + 1,
@@ -302,8 +306,13 @@ submissionsRouter.post('/submissions/:submissionId/artifacts/pdf/presign', authR
     }
 
     const body = presignPdfSchema.parse(req.body);
-    const key = `submissions/${submission.id}/${Date.now()}.pdf`;
-    const bucket = process.env.S3_UPLOAD_BUCKET || 'gradedescent-uploads';
+    const key = buildSubmissionPdfKey(submission.id, body.filename);
+
+    const { url, expiresAt, bucket } = await getPresignedUploadUrl({
+      key,
+      contentType: body.contentType,
+      contentLength: body.sizeBytes,
+    });
 
     const artifact = await prisma.artifact.create({
       data: {
@@ -317,19 +326,18 @@ submissionsRouter.post('/submissions/:submissionId/artifacts/pdf/presign', authR
       },
     });
 
-    const expiresAt = new Date(Date.now() + 15 * 60_000);
-    const baseUrl = process.env.S3_UPLOAD_BASE_URL || 'https://example.invalid/uploads';
-
     return jsonOk(
       res,
       {
         artifactId: artifact.id,
         upload: {
-          url: `${baseUrl}/${encodeURIComponent(key)}`,
+          url,
           method: 'PUT',
           headers: { 'Content-Type': body.contentType },
           expiresAt: expiresAt.toISOString(),
         },
+        bucket,
+        key,
       },
       201,
     );
@@ -438,9 +446,9 @@ submissionsRouter.get('/artifacts/:artifactId/download', authRequired, async (re
       return res.status(400).json({ error: { type: 'validation_error', message: 'Artifact is not a PDF' } });
     }
 
-    const baseUrl = process.env.S3_DOWNLOAD_BASE_URL || 'https://example.invalid/downloads';
-    const expiresAt = new Date(Date.now() + 15 * 60_000);
-    return jsonOk(res, { url: `${baseUrl}/${encodeURIComponent(artifact.s3Key || artifact.id)}`, expiresAt: expiresAt.toISOString() });
+    const key = artifact.s3Key || artifact.id;
+    const { url, expiresAt } = await getPresignedDownloadUrl({ key });
+    return jsonOk(res, { url, expiresAt: expiresAt.toISOString() });
   } catch (err) {
     next(err);
   }

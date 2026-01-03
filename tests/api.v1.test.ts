@@ -335,7 +335,7 @@ const prismaMock = {
       }
       return arr[0] ?? null;
     }),
-    findMany: vi.fn(async ({ where, take, cursor, orderBy }: any) => {
+    findMany: vi.fn(async ({ where, take, cursor, orderBy, include }: any) => {
       let arr = Array.from(db.submissions.values());
       if (where?.assignmentId) arr = arr.filter((s) => s.assignmentId === where.assignmentId);
       if (where?.userId) arr = arr.filter((s) => s.userId === where.userId);
@@ -346,6 +346,12 @@ const prismaMock = {
         start = idx >= 0 ? idx + 1 : 0;
       }
       const page = typeof take === 'number' ? arr.slice(start, start + take) : arr;
+      if (include?.user) {
+        return page.map((submission) => ({
+          ...submission,
+          user: db.users.get(submission.userId) || null,
+        }));
+      }
       return page;
     }),
     aggregate: vi.fn(async ({ where }: any) => {

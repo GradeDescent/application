@@ -105,6 +105,19 @@ export function useSubmission(submissionId?: string) {
   return query;
 }
 
+export function useSubmissions(assignmentId?: string) {
+  return useQuery({
+    queryKey: ['submissions', assignmentId],
+    queryFn: async () => {
+      const data = await apiFetch<{ items: Submission[]; next_cursor?: string | null }>(
+        `/assignments/${assignmentId}/submissions`,
+      );
+      return listResponse(submissionSchema)(data);
+    },
+    enabled: !!assignmentId,
+  });
+}
+
 export function useEvaluations(submissionId?: string) {
   const pollStart = useRef<number | null>(null);
   const query = useQuery({

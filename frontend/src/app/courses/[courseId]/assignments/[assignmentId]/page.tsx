@@ -5,7 +5,7 @@ import { AuthGuard } from '@/components/auth-guard';
 import { SubmissionWidget } from '@/components/submission-widget';
 import { SiteHeader } from '@/components/site-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAssignment, useCourse } from '@/lib/queries';
+import { useAssignment, useCourse, useSubmissions } from '@/lib/queries';
 import { PageShell } from '@/components/page-shell';
 
 export default function AssignmentDetailPage() {
@@ -13,6 +13,7 @@ export default function AssignmentDetailPage() {
   const courseId = Array.isArray(params.courseId) ? params.courseId[0] : params.courseId;
   const assignmentId = Array.isArray(params.assignmentId) ? params.assignmentId[0] : params.assignmentId;
   const assignmentQuery = useAssignment(courseId, assignmentId);
+  const submissionsQuery = useSubmissions(assignmentId);
   const courseQuery = useCourse(courseId);
   const prettySource = assignmentQuery.data?.sourceTex
     ? prettyPrintTex(assignmentQuery.data.sourceTex)
@@ -47,20 +48,59 @@ export default function AssignmentDetailPage() {
                 </CardContent>
               </Card>
             ) : assignmentQuery.data ? (
-              <Card className="border-none bg-card/90 shadow">
-                <CardHeader>
-                  <CardTitle>{assignmentQuery.data.title}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm text-muted-foreground">Total points: {assignmentQuery.data.totalPoints}</p>
-                  <div>
-                    <h3 className="mb-2 text-sm font-semibold">Source TeX</h3>
-                    <pre className="max-h-[520px] w-full max-w-3xl overflow-auto rounded-md border border-border/60 bg-muted/40 p-4 text-xs leading-relaxed text-foreground">
-                      <code>{prettySource}</code>
-                    </pre>
-                  </div>
-                </CardContent>
-              </Card>
+              <>
+                <Card className="border-none bg-card/90 shadow">
+                  <CardHeader>
+                    <CardTitle>{assignmentQuery.data.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-sm text-muted-foreground">Total points: {assignmentQuery.data.totalPoints}</p>
+                    <div>
+                      <h3 className="mb-2 text-sm font-semibold">Source TeX</h3>
+                      <pre className="max-h-[520px] w-full max-w-3xl overflow-auto rounded-md border border-border/60 bg-muted/40 p-4 text-xs leading-relaxed text-foreground">
+                        <code>{prettySource}</code>
+                      </pre>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-none bg-card/90 shadow">
+                  <CardHeader>
+                    <CardTitle>Submissions</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {submissionsQuery.isLoading ? (
+                      <p className="text-sm text-muted-foreground">Loading submissions...</p>
+                    ) : submissionsQuery.isError ? (
+                      <p className="text-sm text-destructive">Failed to load submissions.</p>
+                    ) : submissionsQuery.data?.items.length ? (
+                      <div className="divide-y divide-border/60">
+                        {submissionsQuery.data.items.map((submission) => (
+                          <div key={submission.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold">Submission #{submission.number}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Student: {submission.user?.name || submission.user?.email || submission.userId}
+                              </p>
+                              {submission.user?.email ? (
+                                <p className="text-xs text-muted-foreground">{submission.user.email}</p>
+                              ) : null}
+                            </div>
+                            <div className="text-right text-xs text-muted-foreground">
+                              <p>Status: {submission.status}</p>
+                              {submission.submittedAt ? (
+                                <p>{new Date(submission.submittedAt).toLocaleString()}</p>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No submissions yet.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
             ) : (
               <Card>
                 <CardContent className="py-8 text-center text-sm text-muted-foreground">

@@ -46,6 +46,13 @@ export const submissionSchema = z.object({
   createdAt: z.string().optional(),
   submittedAt: z.string().nullable().optional(),
   errorMessage: z.string().nullable().optional(),
+  user: z
+    .object({
+      id: z.string(),
+      email: z.string().email(),
+      name: z.string().nullable().optional(),
+    })
+    .optional(),
 });
 
 export const artifactSchema = z.object({
