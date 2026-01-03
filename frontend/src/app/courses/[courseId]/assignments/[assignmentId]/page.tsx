@@ -2,7 +2,6 @@
 
 import { useParams } from 'next/navigation';
 import { AuthGuard } from '@/components/auth-guard';
-import { LatexBlock } from '@/components/latex-block';
 import { SubmissionWidget } from '@/components/submission-widget';
 import { SiteHeader } from '@/components/site-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +14,9 @@ export default function AssignmentDetailPage() {
   const assignmentId = Array.isArray(params.assignmentId) ? params.assignmentId[0] : params.assignmentId;
   const assignmentQuery = useAssignment(courseId, assignmentId);
   const courseQuery = useCourse(courseId);
+  const prettySource = assignmentQuery.data?.sourceTex
+    ? prettyPrintTex(assignmentQuery.data.sourceTex)
+    : '';
 
   return (
     <AuthGuard>
@@ -53,7 +55,9 @@ export default function AssignmentDetailPage() {
                   <p className="text-sm text-muted-foreground">Total points: {assignmentQuery.data.totalPoints}</p>
                   <div>
                     <h3 className="mb-2 text-sm font-semibold">Source TeX</h3>
-                    <LatexBlock tex={assignmentQuery.data.sourceTex} />
+                    <pre className="max-h-[520px] w-full max-w-3xl overflow-auto rounded-md border border-border/60 bg-muted/40 p-4 text-xs leading-relaxed text-foreground">
+                      <code>{prettySource}</code>
+                    </pre>
                   </div>
                 </CardContent>
               </Card>
@@ -70,4 +74,33 @@ export default function AssignmentDetailPage() {
       </PageShell>
     </AuthGuard>
   );
+}
+
+function prettyPrintTex(source: string) {
+  const normalized = source.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  const expanded = normalized
+    .replace(/\\begin{([^}]+)}/g, '\n\\begin{$1}\n')
+    .replace(/\\end{([^}]+)}/g, '\n\\end{$1}\n')
+    .replace(/\\item\b/g, '\n\\item ')
+    .replace(/\\\\\s*/g, '\\\\\n');
+
+  const lines = expanded
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  let indent = 0;
+  const output: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith('\\end{')) {
+      indent = Math.max(0, indent - 1);
+    }
+    output.push(`${'  '.repeat(indent)}${line}`);
+    if (line.startsWith('\\begin{')) {
+      indent += 1;
+    }
+  }
+
+  return output.join('\n');
 }
