@@ -73,6 +73,79 @@ export default function CoursesPage() {
         />
 
         <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-6 px-6 py-8">
+          <div className="grid gap-4">
+            {coursesQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading courses...</p>
+            ) : coursesQuery.isError ? (
+              <Card>
+                <CardContent className="py-8 text-center text-sm text-destructive">
+                  Failed to load courses.
+                </CardContent>
+              </Card>
+            ) : coursesQuery.data?.items.length ? (
+              coursesQuery.data.items.map((course) => {
+                const description = course.description?.trim()
+                  ? course.description.trim()
+                  : 'No description provided.';
+                return (
+                  <Link
+                    key={course.id}
+                    href={`/courses/${course.id}`}
+                    className="group block transition-transform hover:-translate-y-0.5"
+                  >
+                    <Card className="border-none bg-card/90 shadow transition-colors group-hover:bg-card/100 group-hover:shadow-lg group-hover:ring-2 group-hover:ring-primary/30">
+                      <CardHeader>
+                        <CardTitle className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <span className="text-base font-semibold">{course.title}</span>
+                          <span className="text-xs text-muted-foreground">{course.role || 'MEMBER'}</span>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <p className="text-sm text-muted-foreground">{description}</p>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                );
+              })
+            ) : (
+              <Card>
+                <CardContent className="space-y-2 py-8 text-center text-sm text-muted-foreground">
+                  <p>No courses yet.</p>
+                  <p>Create a course or join one using a code from your instructor.</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <Card className="border-none bg-card/90 shadow-lg">
+            <CardHeader>
+              <CardTitle>Join a course</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Your instructor may have provided you with a course code. Enter it here to join as a student.
+              </p>
+              <form
+                className="flex flex-col gap-3 md:flex-row"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  joinMutation.mutate();
+                }}
+              >
+                <Input
+                  placeholder="Course code"
+                  value={joinCode}
+                  onChange={(event) => setJoinCode(event.target.value)}
+                  required
+                />
+                <Button type="submit" disabled={joinMutation.isPending || !joinCode.trim()}>
+                  Join
+                </Button>
+              </form>
+              {joinError ? <p className="mt-2 text-sm text-destructive">{joinError}</p> : null}
+            </CardContent>
+          </Card>
+
           <Card className="border-none bg-card/90 shadow-lg">
             <CardHeader>
               <CardTitle>Create a course</CardTitle>
@@ -126,73 +199,6 @@ export default function CoursesPage() {
               {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
             </CardContent>
           </Card>
-
-          <Card className="border-none bg-card/90 shadow-lg">
-            <CardHeader>
-              <CardTitle>Join a course</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="mb-3 text-sm text-muted-foreground">
-                Your instructor may have provided you with a course code. Enter it here to join as a student.
-              </p>
-              <form
-                className="flex flex-col gap-3 md:flex-row"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  joinMutation.mutate();
-                }}
-              >
-                <Input
-                  placeholder="Course code"
-                  value={joinCode}
-                  onChange={(event) => setJoinCode(event.target.value)}
-                  required
-                />
-                <Button type="submit" disabled={joinMutation.isPending || !joinCode.trim()}>
-                  Join
-                </Button>
-              </form>
-              {joinError ? <p className="mt-2 text-sm text-destructive">{joinError}</p> : null}
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-4">
-            {coursesQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading courses...</p>
-            ) : coursesQuery.isError ? (
-              <Card>
-                <CardContent className="py-8 text-center text-sm text-destructive">
-                  Failed to load courses.
-                </CardContent>
-              </Card>
-            ) : coursesQuery.data?.items.length ? (
-              coursesQuery.data.items.map((course) => (
-                <Card key={course.id} className="border-none bg-card/90 shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <span>{course.title}</span>
-                      <span className="text-xs text-muted-foreground">{course.role || 'MEMBER'}</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">{course.code || 'No code'}</p>
-                    <Button asChild variant="outline">
-                      <Link href={`/courses/${course.id}/assignments`}>Assignments</Link>
-                    </Button>
-                    <Button asChild variant="ghost">
-                      <Link href={`/courses/${course.id}`}>Details</Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))
-            ) : (
-              <Card>
-                <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                  No courses yet. Create one to get started.
-                </CardContent>
-              </Card>
-            )}
-          </div>
         </main>
       </PageShell>
     </AuthGuard>
